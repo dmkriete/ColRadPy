@@ -246,7 +246,7 @@ class energy_balance(object):
 
 
 def plasma_energy_transfer_frequency(
-    masses, charges, densities, temperatures, debye_length
+    masses, charges, density, temperatures, debye_length
 ):
     """
     Calculates the collisional energy transfer frequency between two plasma
@@ -267,7 +267,7 @@ def plasma_energy_transfer_frequency(
         Mass of each species in kilograms. 
     charges : array, shape (..., 2)
         Charge number of each species.
-    densities : array, shape (...)
+    density : array, shape (...)
         Density of species 2 in particles per cubic meter.
     temperatures : array, shape (..., 2)
         Temperature of each species in electron-volts.
@@ -284,7 +284,7 @@ def plasma_energy_transfer_frequency(
     log = coulomb_logarithm(masses, charges, temperatures, debye_length)
     frequency = (
         (
-            densities * charges[..., 0]**2 * charges[..., 1]**2
+            density * charges[..., 0]**2 * charges[..., 1]**2
             * constants.e**4 * log
         )
         / (
@@ -423,31 +423,43 @@ def debye_length(charges, densities, temperatures):
 
 # Tests for collisional energy transfer rates
 if __name__ == "__main__":
+    T_proton = 20
+    T_electron = 20
+    T_carbon = 1.5
+    density = 1e19
+    L = debye_length(
+        charges=np.array([1, -1]),
+        densities=np.array([density, density]),
+        temperatures=np.array([T_proton, T_electron]),
+    )
     proton_to_carbon2_rate = plasma_energy_transfer_frequency(  # Energy transfer rate from protons to C2+
         masses=np.array([12.011 * constants.value("atomic mass constant"), constants.proton_mass]),
         charges=np.array([2, 1]),
-        densities=np.array([1e17, 5e18]),
-        temperatures=np.array([1.5, 15]),
+        density=density,
+        temperatures=np.array([T_carbon, T_proton]),
+        debye_length=L,
     )
     electron_to_carbon2_rate = plasma_energy_transfer_frequency(  # Energy transfer rate from electrons to C2+
         masses=np.array([12.011 * constants.value("atomic mass constant"), constants.electron_mass]),
         charges=np.array([2, -1]),
-        densities=np.array([1e17, 5e18]),
-        temperatures=np.array([1.5, 15]),
-    )
-    proton_to_carbon0_rate = neutral_energy_transfer_frequency(
-        masses=np.array([12.011 * constants.value("atomic mass constant"), constants.proton_mass]),
-        plasma_density=5e18,
-        neutral_dipole_polarizability=12.0,
-    )
-    electron_to_carbon0_rate = neutral_energy_transfer_frequency(
-        masses=np.array([12.011 * constants.value("atomic mass constant"), constants.electron_mass]),
-        plasma_density=5e18,
-        neutral_dipole_polarizability=12.0,
+        density=density,
+        temperatures=np.array([T_carbon, T_electron]),
+        debye_length=L,
     )
     deuteron_to_electron_rate = plasma_energy_transfer_frequency(
         masses=np.array([constants.electron_mass, constants.value("deuteron mass")]),
         charges=np.array([-1, 1]),
-        densities=np.array([1e21, 1e21]),
+        density=density,
         temperatures=np.array([1e3, 10e3]),
+        debye_length=L,
+    )
+    proton_to_carbon0_rate = neutral_energy_transfer_frequency(
+        masses=np.array([12.011 * constants.value("atomic mass constant"), constants.proton_mass]),
+        plasma_density=density,
+        neutral_dipole_polarizability=12.0,
+    )
+    electron_to_carbon0_rate = neutral_energy_transfer_frequency(
+        masses=np.array([12.011 * constants.value("atomic mass constant"), constants.electron_mass]),
+        plasma_density=density,
+        neutral_dipole_polarizability=12.0,
     )
