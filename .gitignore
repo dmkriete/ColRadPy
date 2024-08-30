@@ -1,5 +1,6 @@
 # Custom/manually added
 .idea
+.DS_Store
 examples/output
 examples/input/Open-ADAS
 
