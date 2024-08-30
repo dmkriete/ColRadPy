@@ -245,6 +245,7 @@ class ionization_balance():
                 self.data['user']['init_abund'][0] = 1.
 
 
+            # TODO: The logic here does not make sense and should be fixed
             if( (self.data['user']['ne_tau'][0] != -1) or (self.data['user']['ne_tau'][0] != -1)):
                 if(self.data['user']['ne_tau'][0] == -1):
                     nt = ne_tau
@@ -342,156 +343,119 @@ class ionization_balance():
                 if(self.data['user']['use_cx'][i]):
                     self.data['cr_data']['gcrs'][str(i)]['ccd'] = tmp.data['processed']['ccd']
 
-    def populate_ion_matrix(self):
-        """This will populate the ionization matrix from the various GCR coefficients
-           for all of the ionization stages
 
-           This matrix in mostly zeros because we don't have ways to connect charge states
-           that are more than one change away. For example if only ground states are included
-           this matrix becomes diagonal.
-
-           QCDs bring the atom between metastables states in a charge state
-           SCDS bring the atom to the next charge state
-           ACDS bring the atom to the previous charge state
-           XCDS bring the atom to next charge state between the metastables of that level,
-           through the previous charge state
-
-           The columns of this matrix sum to zero
+    def populate_ion_matrix(self, ne_tau=np.inf):
         """
-        #finding the total number of states to be tracked (metastables)
-        m = np.shape(self.data['cr_data']['gcrs']['0']['qcd'])[0]#num metastables in ground
-        m = m + np.shape(self.data['cr_data']['gcrs']['0']['scd'])[1]#num metastables in plus
+        Populates the ionization matrix with the various GCR coefficients.
 
-        for i in range(1,len(self.data['cr_data']['gcrs'])):
-            m = m + np.shape(self.data['cr_data']['gcrs'][str(i)]['scd'])[1]#num of metastales in the plus loop
-        #create an empty matrix to hold the GCR rates
+        This matrix in mostly zeros because we don't have ways to connect
+        charge states that are more than one change away. For example if only
+        ground states are included this matrix becomes diagonal.
 
+        QCDs bring the atom between metastables states in a charge state.
+        SCDS bring the atom to the next charge state.
+        ACDS bring the atom to the previous charge state.
+        XCDS bring the atom to next charge state between the metastables of
+        that level, through the previous charge state.
 
+        The columns of this matrix sum to zero.
+        
+        Parameters
+        ----------
+        ne_tau : float
+            Simulates the effect of transport on the ionization balance by
+            adding a 1/tau term to each state's evolution equation. Tau is a
+            characteristic timescale or "dwell time" for the transport. By
+            convention, tau is scaled by the density, and this parameter should
+            have units of cm^-3 s. Note that it is more common to simulate
+            transport effects by performing a time-dependent CRM calculation
+            and truncating the result at the dwell time, rather than the
+            approach here of including a 1/tau decay term directly in the
+            CRM equations. Positive values indicate transport away the
+            simulation volume (resulting in decay of each charge state), while
+            negative values indicate transport into the simulation volume
+            (resulting in growth of each charge state). By default, this
+            parameter is infinity (i.e. no transport).
+        """
+        # Find the total number of states to be tracked (metastables)
+        num_meta = np.shape(self.data['cr_data']['gcrs']['0']['qcd'])[0]  # Num metastables in neutral atom
+        for i in range(len(self.data['cr_data']['gcrs'])):
+            num_meta += np.shape(self.data['cr_data']['gcrs'][str(i)]['scd'])[1]  # Num metastables in each ionization stage
 
+        # Create an empty matrix to hold the GCR rates
         if(self.data['user']['temp_dens_pair']):
-            self.data['ion_matrix'] = np.zeros((m, m,len(self.data['user']['temp_grid'])))
-
-
-            m = 0
-            for i in range(0,len(self.data['cr_data']['gcrs'])):
-                num_met = np.shape(self.data['cr_data']['gcrs'][str(i)]['qcd'])[0]
-                num_ion = np.shape(self.data['cr_data']['gcrs'][str(i)]['scd'])[1]
-                diag_met = np.diag_indices(num_met)
-                diag_ion = np.diag_indices(num_ion)
-
-                #populate QCDs in ion balance
-                self.data['ion_matrix'][m+diag_met[0],m+diag_met[1]] = self.data['ion_matrix'][m+diag_met[0],m+diag_met[1]] \
-                                       -np.sum(self.data['cr_data']['gcrs'][str(i)]['qcd'],axis=1)
-
-                self.data['ion_matrix'][m:m+num_met,m:m+num_met,:]=self.data['ion_matrix'][m:m+num_met,m:m+num_met,:]\
-                                        +self.data['cr_data']['gcrs'][str(i)]['qcd'].transpose(1,0,2)
-
-                #populate SCDs in ion balance
-                self.data['ion_matrix'][m+diag_met[0],m+diag_met[1]] = self.data['ion_matrix'][m+diag_met[0],m+diag_met[1]]\
-                                          -np.sum(self.data['cr_data']['gcrs'][str(i)]['scd'],axis=1)
-
-                self.data['ion_matrix'][m+num_met:m+num_met+num_ion,m:m+num_met,:] = \
-                                    self.data['ion_matrix'][m+num_met:m+num_met+num_ion,m:m+num_met,:] \
-                                                       +self.data['cr_data']['gcrs'][str(i)]['scd'].transpose(1,0,2)
-
-                #populate ACDs in ion balance
-                self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ] = \
-                                            self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ]-\
-                                                   np.sum(self.data['cr_data']['gcrs'][str(i)]['acd'],axis=0)
-
-                self.data['ion_matrix'][m:m+num_met,m+num_met:m+num_met+num_ion,:] = \
-                                self.data['ion_matrix'][m:m+num_met,m+num_met:m+num_met+num_ion,:] \
-                                                 +  self.data['cr_data']['gcrs'][str(i)]['acd']
-
-                #populate CCDs in ion balance
-
-
-
-                
-                if(self.data['user']['use_cx'][i]):
-                    self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ] = \
-                                                self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ]-\
-                                                       np.sum(np.einsum('ijn,n->ijn',self.data['cr_data']['gcrs'][str(i)]['ccd'],
-                                                                        self.data['user']['hdens_grid']/self.data['user']['dens_grid']),axis=0)
-
-
-                    self.data['ion_matrix'][m:m+num_met,m+num_met:m+num_met+num_ion,:] = \
-                                    self.data['ion_matrix'][m:m+num_met,m+num_met:m+num_met+num_ion,:] \
-                                                     +  np.einsum('ijn,n->ijn',self.data['cr_data']['gcrs'][str(i)]['ccd'],
-                                                                  self.data['user']['hdens_grid']/self.data['user']['dens_grid'])                                                                  
-
-                #populate XCD in ion balance
-                self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ] = \
-                                            self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ]-\
-                                            np.sum(self.data['cr_data']['gcrs'][str(i)]['xcd'],axis=1)
-
-                self.data['ion_matrix'][m+num_met:m+num_met+num_ion,m+num_met:m+num_met+num_ion,:]=\
-                            self.data['ion_matrix'][m+num_met:m+num_met+num_ion,m+num_met:m+num_met+num_ion,:] + \
-                            self.data['cr_data']['gcrs'][str(i)]['xcd'].transpose(1,0,2)
-
-                m = m + num_met
-
-            
+            self.data['ion_matrix'] = np.zeros((num_meta, num_meta, len(self.data['user']['temp_grid'])))
         else:
-            self.data['ion_matrix'] = np.zeros((m, m,len(self.data['user']['temp_grid']),
-                                                     len(self.data['user']['dens_grid'])))
-                                                     
-            m = 0
-            for i in range(0,len(self.data['cr_data']['gcrs'])):
-                num_met = np.shape(self.data['cr_data']['gcrs'][str(i)]['qcd'])[0]
-                num_ion = np.shape(self.data['cr_data']['gcrs'][str(i)]['scd'])[1]
-                diag_met = np.diag_indices(num_met)
-                diag_ion = np.diag_indices(num_ion)
+            self.data['ion_matrix'] = np.zeros(
+                (num_meta, num_meta, len(self.data['user']['temp_grid']), len(self.data['user']['dens_grid']))
+            )
 
-                #populate QCDs in ion balance
-                self.data['ion_matrix'][m+diag_met[0],m+diag_met[1]] = self.data['ion_matrix'][m+diag_met[0],m+diag_met[1]] \
-                                       -np.sum(self.data['cr_data']['gcrs'][str(i)]['qcd'],axis=1)
+        # Populate the ionization matrix
+        m = 0  # Index of the lowest metastable state (i.e. ground state) for each ionization stage
+        for i in range(len(self.data['cr_data']['gcrs'])):
+            num_meta_lower = np.shape(self.data['cr_data']['gcrs'][str(i)]['qcd'])[0]
+            num_meta_upper = np.shape(self.data['cr_data']['gcrs'][str(i)]['scd'])[1]
+            diag_lower = np.diag_indices(num_meta_lower)
+            diag_upper = np.diag_indices(num_meta_upper)
+            
+            # Consider pre-calculating m + diag_lower[0] since it gets used a lot?
+            # Consider pre-calculating m + num_meta_lower since it gets used a lot?
 
-                self.data['ion_matrix'][m:m+num_met,m:m+num_met,:,:]=self.data['ion_matrix'][m:m+num_met,m:m+num_met,:,:]\
-                                        +self.data['cr_data']['gcrs'][str(i)]['qcd'].transpose(1,0,2,3)
+            # Populate SCDs in ion balance
+            self.data['ion_matrix'][m+diag_lower[0], m+diag_lower[1]] -= (
+                np.sum(self.data['cr_data']['gcrs'][str(i)]['scd'], axis=1)
+            )
+            self.data['ion_matrix'][m+num_meta_lower:m+num_meta_lower+num_meta_upper, m:m+num_meta_lower] += (
+                np.swapaxes(self.data['cr_data']['gcrs'][str(i)]['scd'], 0, 1)
+            )
 
-                #populate SCDs in ion balance
-                self.data['ion_matrix'][m+diag_met[0],m+diag_met[1]] = self.data['ion_matrix'][m+diag_met[0],m+diag_met[1]]\
-                                          -np.sum(self.data['cr_data']['gcrs'][str(i)]['scd'],axis=1)
+            # Populate ACDs in ion balance
+            self.data['ion_matrix'][m+num_meta_lower+diag_upper[0], m+num_meta_lower+diag_upper[1]] -= (
+                np.sum(self.data['cr_data']['gcrs'][str(i)]['acd'], axis=0)
+            )
+            self.data['ion_matrix'][m:m+num_meta_lower, m+num_meta_lower:m+num_meta_lower+num_meta_upper] += (
+                self.data['cr_data']['gcrs'][str(i)]['acd']
+            )
 
-                self.data['ion_matrix'][m+num_met:m+num_met+num_ion,m:m+num_met,:,:] = \
-                                    self.data['ion_matrix'][m+num_met:m+num_met+num_ion,m:m+num_met,:,:] \
-                                                       +self.data['cr_data']['gcrs'][str(i)]['scd'].transpose(1,0,2,3)
+            # Populate QCDs in ion balance
+            self.data['ion_matrix'][m+diag_lower[0], m+diag_lower[1]] -= (
+                np.sum(self.data['cr_data']['gcrs'][str(i)]['qcd'], axis=1)
+            )
+            self.data['ion_matrix'][m:m+num_meta_lower, m:m+num_meta_lower] += (
+                np.swapaxes(self.data['cr_data']['gcrs'][str(i)]['qcd'], 0, 1)
+            )
 
-                #populate ACDs in ion balance
-                self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ] = \
-                                            self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ]-\
-                                                   np.sum(self.data['cr_data']['gcrs'][str(i)]['acd'],axis=0)
+            # Populate XCDs in ion balance
+            self.data['ion_matrix'][m+num_meta_lower+diag_upper[0], m+num_meta_lower+diag_upper[1]] -= (
+                np.sum(self.data['cr_data']['gcrs'][str(i)]['xcd'], axis=1)
+            )
+            self.data['ion_matrix'][m+num_meta_lower:m+num_meta_lower+num_meta_upper, m+num_meta_lower:m+num_meta_lower+num_meta_upper] += (
+                np.swapaxes(self.data['cr_data']['gcrs'][str(i)]['xcd'], 0, 1)
+            )
 
-                self.data['ion_matrix'][m:m+num_met,m+num_met:m+num_met+num_ion,:,:] = \
-                                self.data['ion_matrix'][m:m+num_met,m+num_met:m+num_met+num_ion,:,:] \
-                                                 +  self.data['cr_data']['gcrs'][str(i)]['acd']
-                #populate CCDs in ion balance
-                if(self.data['user']['use_cx'][i]):                
-                    self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ] = \
-                                            self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ]-\
-                                                   np.sum(np.einsum('ijkn,n->ijkn',self.data['cr_data']['gcrs'][str(i)]['ccd'],
-                                                                    self.data['user']['hdens_grid']/self.data['user']['dens_grid']),axis=0)
+            # Populate CCDs in ion balance
+            # This assumes the electron density and neutral hydrogen density grids are aligned
+            if(self.data['user']['use_cx'][i]):
+                self.data['ion_matrix'][m+num_meta_lower+diag_upper[0], m+num_meta_lower+diag_upper[1]] -= (
+                    np.sum(
+                        self.data['cr_data']['gcrs'][str(i)]['ccd'] * self.data['user']['hdens_grid'] / self.data['user']['dens_grid'],
+                        axis=0,
+                    )
+                )
+                self.data['ion_matrix'][m:m+num_meta_lower, m+num_meta_lower:m+num_meta_lower+num_meta_upper] += (
+                    self.data['cr_data']['gcrs'][str(i)]['ccd'] * self.data['user']['hdens_grid'] / self.data['user']['dens_grid']
+                )
 
-                    self.data['ion_matrix'][m:m+num_met,m+num_met:m+num_met+num_ion,:,:] = \
-                                    self.data['ion_matrix'][m:m+num_met,m+num_met:m+num_met+num_ion,:,:] \
-                                                     +  np.einsum('ijkn,n->ijkn',self.data['cr_data']['gcrs'][str(i)]['ccd'],
-                                                                  self.data['user']['hdens_grid']/self.data['user']['dens_grid'])
+            # Determine metastable state index for next ionization stage's ground state
+            m += num_meta_lower
 
-                #populate XCD in ion balance
-                self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ] = \
-                                            self.data['ion_matrix'][m+num_met+diag_ion[0], m+num_met+diag_ion[1] ]-\
-                                            np.sum(self.data['cr_data']['gcrs'][str(i)]['xcd'],axis=1)
-
-                self.data['ion_matrix'][m+num_met:m+num_met+num_ion,m+num_met:m+num_met+num_ion,:,:]=\
-                            self.data['ion_matrix'][m+num_met:m+num_met+num_ion,m+num_met:m+num_met+num_ion,:,:] + \
-                            self.data['cr_data']['gcrs'][str(i)]['xcd'].transpose(1,0,2,3)
-
-                m = m + num_met
+        # Populate transport term in ion balance
+        self.data['ion_matrix'][np.diag_indices(num_meta)] -= 1 / ne_tau
 
 
-    def solve_no_source(self,n0=np.array([]),td_t=np.array([])):
-        """Solves the ionization balance matrix given an initial populations and times
+    def solve_no_source(self, n0=np.array([]), td_t=np.array([])):
+        """
+        Solve the ionization balance matrix given an initial populations and times
 
         :param n0: The initial populations of levels at t=0
         :type n0: float array
@@ -501,35 +465,28 @@ class ionization_balance():
 
 
         populates the pops, eigen_val and eigen_vec
-
         """
-
-        if(n0.size < 1):
+        if n0.size < 1:
             n0 = self.data['user']['init_abund']
-        if(td_t.size < 1):
+        if td_t.size < 1:
             td_t = self.data['user']['soln_times']
 
-        if('processed' not in self.data.keys()):
+        if 'processed' not in self.data.keys():
             self.data['processed'] = {}
-            self.data['processed']['pops_td'] = 0
-            self.data['processed']['eigen_val'] = 0
-            self.data['processed']['eigen_vec'] = 0            
-            #solve the ionization balance set of equation with no source term
-        if(self.data['user']['temp_dens_pair']):
-            self.data['processed']['pops_td'],\
-                self.data['processed']['eigen_val'],\
-                self.data['processed']['eigen_vec'] = solve_matrix_exponential(
-                                               np.einsum('ijk,k->ijk',self.data['ion_matrix'],
-                                               self.data['user']['dens_grid']),n0,td_t)
 
-        else:
-            self.data['processed']['pops_td'],\
-                self.data['processed']['eigen_val'],\
-                self.data['processed']['eigen_vec'] = solve_matrix_exponential(
-                                               np.einsum('ijkl,l->ijkl',self.data['ion_matrix'],
-                                               self.data['user']['dens_grid']),n0,td_t)
-    def solve_source(self,n0=np.array([]), s0=np.array([]), td_t=np.array([]),ne_tau = np.array([-1])):
-        """Solves the ionization balance matrix given an
+        # Solve the ionization balance set of equation with no source term
+        (
+            self.data['processed']['pops_td'],
+            self.data['processed']['eigen_val'],
+            self.data['processed']['eigen_vec'],
+        ) = solve_matrix_exponential(
+            self.data['ion_matrix'] * self.data['user']['dens_grid'], n0, td_t
+        )
+
+
+    def solve_source(self, n0=np.array([]), s0=np.array([]), td_t=np.array([]), ne_tau=np.array([-1])):
+        """
+        Solves the ionization balance matrix given an
              initial populations and times when a source term is present
 
         :param n0: The initial populations of levels at t=0
@@ -542,70 +499,51 @@ class ionization_balance():
         populates the pops, eigen_val and eigen_vec
 
         """
-
-        if(n0.size < 1):
+        if n0.size < 1:
             n0 = self.data['user']['init_abund']
-        if(td_t.size < 1):
+        if td_t.size < 1:
             td_t = self.data['user']['soln_times']
 
-        if( (self.data['user']['ne_tau'][0] != -1) or (self.data['user']['ne_tau'][0] != -1)):
-            if(self.data['user']['ne_tau'][0] == -1):
-                nt = ne_tau
-            else:
-                nt = self.data['user']['ne_tau']
+        # TODO: The logic behind the transport value doesn't make sense
+        if self.data['user']['ne_tau'][0] != -1:
+            nt = self.data['user']['ne_tau']
             td_t = np.einsum('i,j->ij', nt, 1/self.data['user']['dens_grid'])
             print('ne_tau was not equal to -1 so overwiting solution times with ne_tau calculated values')
             self.data['user']['soln_times'] = td_t 
-            
-        if(s0.size < 1):
+
+        # Set the default source to be zero for every state
+        if s0.size < 1:
             if(self.data['user']['source'].size < 1):
-                s0 = np.zeros((np.sum(list(map(len,self.data['user']['metas']))) +1))
+                s0 = np.zeros((np.sum(list(map(len, self.data['user']['metas'])))+1))
             else:
                 s0 = self.data['user']['source']
-
-
                 
-        if('processed' not in self.data.keys()):
+        if 'processed' not in self.data.keys():
             self.data['processed'] = {}
 
-
-
-
-        if(self.data['user']['temp_dens_pair']):
-            self.data['processed']['pops_td_source'],\
-                self.data['processed']['eigen_val'],\
-                self.data['processed']['eigen_vec'] = solve_matrix_exponential_source(
-                                               np.einsum('ijk,k->ijk',self.data['ion_matrix'],
-                                               self.data['user']['dens_grid']),n0,s0,td_t)
-        else:
-            self.data['processed']['pops_td_source'],\
-                self.data['processed']['eigen_val'],\
-                self.data['processed']['eigen_vec'] = solve_matrix_exponential_source(
-                                               np.einsum('ijkl,l->ijkl',self.data['ion_matrix'],
-                                               self.data['user']['dens_grid']),n0,s0,td_t)
-
+        # Solve the ionization balance set of equation with a source term
+        (
+            self.data['processed']['pops_td_source'],
+            self.data['processed']['eigen_val'],
+            self.data['processed']['eigen_vec'],
+        ) = solve_matrix_exponential_source(
+            self.data['ion_matrix'] * self.data['user']['dens_grid'], n0, s0, td_t
+        )
         self.data['processed']['pops_source'] = self.data['processed']['pops_td_source']
 
-        '''
-        self.data['processed']['pops_td'],\
-        self.data['processed']['eigen_val'],\
-        self.data['processed']['eigen_vec'] = solve_matrix_exponential_source(
-                                                 np.einsum('ijkl,l->ijkl',self.data['ion_matrix'],
-                                                 self.data['user']['dens_grid']),n0,s0,td_t)
-        '''
 
     def solve_time_independent(self):
-        """Solves the ionization balance matrix for the steady-state (time-independent) solution.
+        """
+        Solves the ionization balance matrix for the steady-state (time-independent) solution.
 
-           This is going to use the time dependent method just solving at 8 e-folding times
-           for the second to smallest eigen value. Note that there are faster methods to do this
-           but its more work to code it up and the time-dependent part is already done.
-           This function is mostly a niceity for the casual user.
-           The smallest eigenvalue corresponds to the
-           steady state so we want to wait until the second to last componet completely dies off.
-           This is done for the smallest over the given temperature and density parameter space
-           this has been tested for 17 orders of magnitude and I haven't run into overflow problems.
-
+        This is going to use the time dependent method just solving at 8 e-folding times
+        for the second to smallest eigen value. Note that there are faster methods to do this
+        but its more work to code it up and the time-dependent part is already done.
+        This function is mostly a niceity for the casual user.
+        The smallest eigenvalue corresponds to the
+        steady state so we want to wait until the second to last componet completely dies off.
+        This is done for the smallest over the given temperature and density parameter space
+        this has been tested for 17 orders of magnitude and I haven't run into overflow problems.
 
         :param n0: The initial populations of levels at t=0
         :type n0: float array
@@ -615,22 +553,16 @@ class ionization_balance():
 
         populates the pops, eigen_val and eigen_vec
         """
-        if('processed' not in self.data.keys()):
+        if 'processed' not in self.data.keys():
             self.data['processed'] = {}
-            self.data['processed']['pops_ss'] = 0
             
         #for the steady state the initial conditions don't matter so just make it simple        
         n0 = np.zeros((len(self.data['ion_matrix'])))
-        n0[0] = 1.
-        if(self.data['user']['temp_dens_pair']):
-            self.data['processed']['pops_ss'],\
-                self.data['processed']['eigen_val'],\
-                self.data['processed']['eigen_vec'] = solve_matrix_exponential_steady_state(
-                                               np.einsum('ijk,k->ijk',self.data['ion_matrix'],
-                                               self.data['user']['dens_grid']))
-        else:
-            self.data['processed']['pops_ss'],\
-                self.data['processed']['eigen_val'],\
-                self.data['processed']['eigen_vec'] = solve_matrix_exponential_steady_state(
-                                               np.einsum('ijkl,l->ijkl',self.data['ion_matrix'],
-                                               self.data['user']['dens_grid']))
+        n0[0] = 1
+        (
+            self.data['processed']['pops_ss'],
+            self.data['processed']['eigen_val'],
+            self.data['processed']['eigen_vec'],
+        ) = solve_matrix_exponential_steady_state(
+            self.data['ion_matrix'] * self.data['user']['dens_grid']
+        )
