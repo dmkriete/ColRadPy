@@ -115,8 +115,17 @@ def solve_matrix_exponential_steady_state(matrix):
         eigenvals, eigenvectors = np.linalg.eig(matrix.transpose(2,0,1))
         axis=1
 
-        
-    v0 = np.dot(np.linalg.inv(eigenvectors),td_n0)
+    # The matrix ODE's general solution is Sum_i[v_i * e^(lamda_i * t) * u_i],
+    # where v_i is a coefficient determined by the initial condition, lamda_i is
+    # an eigenvalue, and u_i is an eigenvector. Here we calculate the vector of
+    # coefficients v0.
+    v0 = np.dot(np.linalg.inv(eigenvectors), td_n0)
+
+    # All that needs to be done is to check that all eigenvalues are real and
+    # negative (or negative to within machine precision), then find the largest
+    # (least negative) eigenvalue and its corresponding eigenvector and
+    # coefficient, then multiply the coefficient by the eigenvector. This is the
+    # steady state solution.
 
     index = list(np.ix_(*[np.arange(i) for i in eigenvals.shape]))
     index[axis] = np.abs(eigenvals).argsort(axis)
@@ -124,7 +133,7 @@ def solve_matrix_exponential_steady_state(matrix):
 
     if(len(np.shape(matrix)) ==4):    
         ev = eigenvectors.transpose(0,1,3,2)[index]#egienvectors sorted on eigenvals
-        ss_pop = np.einsum('kl,klj->klj',v0[index][:,:,0],ev[:,:,0,:]).transpose(2,0,1)
+        ss_pop = np.einsum('kl,klj->klj', v0[index][:,:,0], ev[:,:,0,:]).transpose(2, 0, 1)
     if(len(np.shape(matrix)) ==3):
         ev = eigenvectors.transpose(0,2,1)[index]#egienvectors sorted on eigenvals
         ss_pop = np.einsum('k,kj->kj',v0[index][:,0],ev[:,0,:]).transpose(1,0)
@@ -132,8 +141,120 @@ def solve_matrix_exponential_steady_state(matrix):
     return ss_pop, eigenvals, eigenvectors
 
 
+def solve_matrix_exponential_ss_new(matrix, source):
+    """
+    Finds the steady-state solution to the ionization balance ODE system.
 
+    The ionization balance system of equations is written in matrix form as
+    dX/dt = AX + b, where X is the vector of fractional abundances for each
+    metastable, A is the collisional-radiative matrix describing population
+    transfer between metastables and transport into or out of the domain, and
+    b is a vector giving the source/sink rate for each metastable.
 
+    At steady-state, dX/dt = 0, so the steady-state solution is found by solving
+    AX = -b. If there is no source/sink, then there must also be no transport,
+    which makes A singular. A then has a zero eigenvalue, and the steady-state
+    solution is the eigenvector associated with the zero eigenvalue. If there is
+    a source/sink, then it must be exactly balanced by transport to preserve
+    particles (i.e. to keep the total fractional abundance 1). In this case,
+    A is invertible and the steady-state solution is X = -A^-1 * b.
+
+    Parameters
+    ----------
+    matrix : float array
+        Collisional-radiative matrix, possibly including transport terms. Has
+        shape (num_metastable, num_metastable, num_temperature, num_density).
+    source : float
+        Source vector in particles per second. Has shape
+        (num_metastable, num_temperature, num_density).
+
+    Returns
+    -------
+    pops_ss : float array
+        Fractional abundances for each (metastable, temperature, density).
+    eigenvalues : float array
+        Eigenvalues for each (temperature, density).
+    eigenvectors : float array
+        Eigenvectors for each (temperature, density).
+    """
+
+    # Calculate eigenvalues & eigenvectors of the ionization balance matrix
+    # Put the density/temperature grid axes to the end of the ionization
+    # balance array (required by numpy.linalg)
+    matrix = np.moveaxis(matrix, (0, 1), (-2, -1))
+    source = np.moveaxis(source, 0, -1)
+    eigenvalues, eigenvectors = np.linalg.eig(matrix)
+
+    # Check that all eigenvalues are real and negative (to within machine precision)
+    if np.iscomplexobj(eigenvalues):
+        raise ValueError(
+            "Ionization balance matrix has complex eigenvalues. This indicates "
+            "there is a problem in its construction."
+        )
+    if not np.all((eigenvalues < 0) | np.isclose(eigenvalues, 0)):
+        raise ValueError(
+            "Ionization balance matrix has non-negative eigenvalues. This does "
+            "not allow for a stable solution and indicates there is a problem "
+            "with the matrix's construction."
+        )
+
+    # Handle the case where at least one of the eigenvalues is zero (which
+    # means the ionization balance matrix is not invertible). This should be
+    # the case whenever transport terms are not directly included in the matrix.
+    if np.any(np.isclose(eigenvalues, 0)):
+
+        # When the ionization balance matrix has a zero eigenvalue, it conserves
+        # the total number of particles. The total source must then be zero.
+        # Otherwise, a steady-state solution does not exist (technically there
+        # is the steady-state solution where all populations are zero, but that
+        # is not physically interesting).
+        if not np.isclose(np.sum(source), 0):  # TODO: check if this works with a density/temperature grid
+            raise ValueError(
+                "Ionization balance matrix conserves total number of "
+                "particles, but a net source/sink is specified, which does not "
+                "permit a steady-state solution. This probably means that a "
+                "finite source/sink was specified without any transport in the "
+                "ionization balance matrix to balance it."
+            )
+
+        # At steady-state, the only nonzero term in the solution will be the one
+        # whose eigenvalue is zero. So the solution for each density/temperature
+        # case is the eigenvector whose eigenvalue is zero.
+        # Get index of the zero eigenvalue (assumed to be the largest eigenvalue)
+        index = np.argmax(eigenvalues, axis=-1)[..., np.newaxis, np.newaxis]
+        # Use index to get the corresponding eigenvector. This is a bit tricky
+        # with the multidimensional array indexing, but np.take_along_axis
+        # simplifies this greatly. The index array needs to have the same shape
+        # as the eigenvector array, so two dummy axes are added to the end. The
+        # result also has a dummy last axis that can be discarded.
+        eigenvector_ss = np.take_along_axis(eigenvectors, index, axis=-1)[..., 0]
+        # The eigenvectors are normalized to have an L2 norm of 1. But since
+        # they represent the fractional abundance here, they need to be
+        # renormalized to make their sum equal to 1.
+        pops_ss = eigenvector_ss / np.sum(eigenvector_ss, axis=-1, keepdims=True)
+
+    # Handle the case where all the eigenvalues are nonzero, indicating that
+    # the matrix is invertible. This is the case when transport terms are
+    # included in the matrix.
+    else:
+        # Check on relative strength of transport and source/sink to make sure
+        # they are balanced. If they aren't, then solution will not conserve #
+        # of particles
+        # TODO: does this actually matter though? I could just renormalize the solution
+        # I definitely need to catch the case where there is positive transport
+        # but zero source, as the particular solution is then zero, but the
+        # homogeneous solution blows up at infinity.
+        pass
+
+        # If the source/sink and transport are balanced, then the steady-state
+        # solution is the particular solution to the matrix ODE system.
+        pops_ss = -np.einsum("...ij,...j", np.linalg.inv(matrix), source)
+
+    # Move the density/temperature axes back to the last axes of the array
+    pops_ss = np.moveaxis(pops_ss, -1, 0)
+    eigenvalues = np.moveaxis(eigenvalues, -1, 0)
+    eigenvectors = np.moveaxis(eigenvectors, (-2, -1), (0, 1))
+    return pops_ss, eigenvalues, eigenvectors
 
 
 def solve_matrix_exponential_source(matrix, td_n0, source, td_t):
@@ -251,4 +372,4 @@ def solve_matrix_exponential_source(matrix, td_n0, source, td_t):
 
     td_pop = np.einsum(evec_str+','+vt_str1+vt_str2+'->'+pop_str  , eigenvectors,v_non)
     
-    return td_pop, eigenvals,eigenvectors
+    return td_pop, eigenvals, eigenvectors
