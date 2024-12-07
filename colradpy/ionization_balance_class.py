@@ -444,8 +444,10 @@ class ionization_balance():
 
     def solve_time_dependent(self, soln_times, init_abund=np.array([])):
         """
-        Solves the ionization balance matrix given an initial populations and
-        times when a source term is present
+        Solves the ionization balance system of equations as a function of time.
+
+        Populates the "pops_td", "eigen_val", and "eigen_vec" entries in the
+        processed data dict.
 
         Parameters
         ----------
@@ -469,7 +471,7 @@ class ionization_balance():
         if 'processed' not in self.data.keys():
             self.data['processed'] = {}
 
-        # Solve the ionization balance set of equations with a source term
+        # Solve the ionization balance set of equations
         (
             self.data['processed']['pops_td'],
             self.data['processed']['eigen_val'],
@@ -484,29 +486,20 @@ class ionization_balance():
 
     def solve_time_independent(self):
         """
-        Solves the ionization balance matrix for the steady-state (time-independent) solution.
+        Finds the ionization balance system of equations steady-state solution.
 
-        This is going to use the time dependent method just solving at 8 e-folding times
-        for the second to smallest eigen value. Note that there are faster methods to do this
-        but its more work to code it up and the time-dependent part is already done.
-        This function is mostly a niceity for the casual user.
-        The smallest eigenvalue corresponds to the
-        steady state so we want to wait until the second to last componet completely dies off.
-        This is done for the smallest over the given temperature and density parameter space
-        this has been tested for 17 orders of magnitude and I haven't run into overflow problems.
-
-        populates the pops, eigen_val and eigen_vec
+        Populates the "pops_ss", "eigen_val", and "eigen_vec" entries in the
+        processed data dict.
         """
-        # TODO: this solution does not account for transport effects (even with
-        # dwell time decay added directly to the ionization matrix). I think
-        # because transport effects require a source, and the matrix_exponential_steady_state function does not account for the source vector
+        # Initialize data structure to hold solution data
         if 'processed' not in self.data.keys():
             self.data['processed'] = {}
+
+        # Solve the ionization balance set of equations
         (
             self.data['processed']['pops_ss'],
             self.data['processed']['eigen_val'],
             self.data['processed']['eigen_vec'],
-        # ) = solve_matrix_exponential_steady_state(
         ) = solve_matrix_exponential_ss_new(
             self.data['ion_matrix'] * self.data['user']['dens_grid'],
             self.data['user']['source'],
