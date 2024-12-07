@@ -1,27 +1,23 @@
 import numpy as np
+from scipy.interpolate import interp2d, RegularGridInterpolator
 from colradpy.colradpy_class import colradpy
 from colradpy.solve_matrix_exponential import (
     solve_matrix_exponential_source,
     solve_matrix_exponential_steady_state,
     solve_matrix_exponential_ss_new,
 )
-from scipy.interpolate import interp2d
 from colradpy.read_adf11 import read_adf11
 
-def interp_rates_adf11(logged_temp,logged_dens,temp,dens,logged_gcr):
-    gcr_arr = np.zeros( (np.shape(logged_gcr)[0],np.shape(logged_gcr)[1],len(temp),len(dens)) )
-    #there has to be a better way to do this mess with the for loops but I can't be bothered
-    #to spend the time to figure it out if this actually gets used for much it should be changed
-    for i in range(0,np.shape(logged_gcr)[0]):
-        for j in range(0,np.shape(logged_gcr)[1]):
-            for k in range(0,len(temp)):
-                for l in range(0,len(dens)):
-                    interp_gcr = interp2d(logged_temp,
-                                          logged_dens,
-                                          logged_gcr[i,j,:,:].transpose(1,0),
-                                          kind="cubic")
-                    gcr_arr[i,j,k,l] = interp_gcr(np.log10(temp[k]),np.log10(dens[l]))
-    return 10**gcr_arr
+
+def interp_rates_adf11(logged_temp, logged_dens, temp, dens, logged_gcr):
+    interp = RegularGridInterpolator(
+        points=(logged_temp, logged_dens),
+        values=np.moveaxis(logged_gcr, (0, 1), (-2, -1)),
+        method="cubic",
+    )
+    temp_grid, dens_grid = np.meshgrid(np.log10(temp), np.log10(dens), indexing='ij')
+    gcr_interp = 10 ** interp((temp_grid, dens_grid))
+    return np.moveaxis(gcr_interp, (-2, -1), (0, 1))
 
 
 class ionization_balance():
