@@ -26,9 +26,10 @@ def read_adf11(fil):
 
     f.readline() #reading '-------------'
     file_type = re.split('_', os.path.split(fil)[-1])[0]
-    if('r' in file_type):
-        adf11['input_file']['metas'] = np.array(list(   #metastables
-                       map(int,re.findall('(\d+)',f.readline()))))
+    if file_type[-1] == 'r':
+        adf11['input_file']['metas'] = np.array(  # metastables
+            list(map(int, re.findall('(\d+)', f.readline())))
+        )
         f.readline() #reading '---------------'
     else:
         adf11['input_file']['metas'] = np.ones(adf11['input_file']['charge_max']+1,dtype='int')
