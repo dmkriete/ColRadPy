@@ -322,7 +322,7 @@ class ionization_balance():
             )
 
 
-    def populate_ion_matrix(self, ne_tau=np.inf, source=np.array([])):
+    def populate_ion_matrix(self, ne_tau=np.inf, source=None):
         """
         Populates the ionization matrix with the various GCR coefficients.
 
@@ -336,27 +336,34 @@ class ionization_balance():
         XCDS bring the atom to next charge state between the metastables of
         that level, through the previous charge state.
 
-        The columns of this matrix sum to zero.
+        The effects of transport on the ionization balance can be approximately
+        modelled by including decay terms for each ionization state in the
+        ionization matrix and a source of particles that balances this decay.
+        Note that an alternative approach to modelling transport effects is to
+        perform a time-dependent CRM calculation and truncate the result at the
+        dwell time.
 
         Parameters
         ----------
-        ne_tau : float
+        ne_tau : float array, optional
             Simulates the effect of transport on the ionization balance by
             adding a 1/tau term to each state's evolution equation. Tau is a
             characteristic timescale or "dwell time" for the transport. By
             convention, tau is scaled by the density, and this parameter should
-            have units of cm^-3 s. Note that it is more common to simulate
-            transport effects by performing a time-dependent CRM calculation
-            and truncating the result at the dwell time, rather than the
-            approach here of including a 1/tau decay term directly in the
-            CRM equations. Positive values indicate transport away the
-            simulation volume (resulting in decay of each charge state), while
-            negative values indicate transport into the simulation volume
-            (resulting in growth of each charge state). By default, this
-            parameter is infinity (i.e. no transport).
+            have units of cm^-3 s. The dwell time is assumed to be the same for
+            each metastable state. Can be a scalar or an array aligned with
+            the input (temperature, density) grid. By default, this parameter
+            is infinity (i.e. no transport).
         source : float array, optional
-            The source rate in atoms per second for each metastable. Defaults
-            to zero for all charge states.
+            Source rate of each metastable state for use in transport
+            modelling. The total source of all states is balanced against
+            transport, so only the relative values matter. Can be a 1D array
+            of length num_metastables, or a higher dimensionality array with
+            the first axis of length num_metastables and the last axes aligned
+            with the input (temperature, density) grid. This parameter is not
+            used if ne_tau is infinity. Defaults to a 100% neutral ground state
+            source, which is useful for modelling transport from regions of
+            lower to higher electron temperature.
         """
         # Find the total number of states to be tracked (metastables)
         num_meta = np.shape(self.data['cr_data']['gcrs']['0']['qcd'])[0]  # Num metastables in neutral atom
@@ -433,13 +440,17 @@ class ionization_balance():
         # Populate transport term in ion balance
         self.data['ion_matrix'][np.diag_indices(num_meta)] -= 1 / ne_tau
 
-        # Set the source vector (defaulting to zero). Technically, this is not
-        # part of the ionization balance matrix, but since it is part of the
-        # ionization balance system of equations, it gets set here.
-        if source.size < 1:
+        # Set the source vector, defaulting to only sourcing the neutral charge
+        # state. For a user-given source, normalize it so the total source of
+        # all charge states is 1. Technically, the source is not part of the
+        # ionization balance matrix, but since it is part of the ionization
+        # balance system of equations, it gets set here.
+        if source is None:
             self.data['user']['source'] = np.zeros(num_meta)
+            self.data['user']['source'][0] = 1
         else:
-            self.data['user']['source'] = source
+            self.data['user']['source'] = source / source.sum(axis=0)
+        self.data['user']['source'] *= self.data['user']['dens_grid'] / ne_tau
 
 
     def solve_time_dependent(self, soln_times, init_abund=np.array([])):

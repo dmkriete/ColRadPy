@@ -151,13 +151,14 @@ def solve_matrix_exponential_ss_new(matrix, source):
     transfer between metastables and transport into or out of the domain, and
     b is a vector giving the source/sink rate for each metastable.
 
-    At steady-state, dX/dt = 0, so the steady-state solution is found by solving
-    AX = -b. If there is no source/sink, then there must also be no transport,
-    which makes A singular. A then has a zero eigenvalue, and the steady-state
-    solution is the eigenvector associated with the zero eigenvalue. If there is
-    a source/sink, then it must be exactly balanced by transport to preserve
-    particles (i.e. to keep the total fractional abundance 1). In this case,
-    A is invertible and the steady-state solution is X = -A^-1 * b.
+    At steady-state, dX/dt = 0, so the steady-state solution is found by
+    solving AX = -b. If there is no source/sink, then there must also be no
+    transport, which makes A singular. A then has a zero eigenvalue, and the
+    steady-state solution is the eigenvector associated with the zero
+    eigenvalue. If there is a source/sink, then it must be exactly balanced by
+    transport to preserve particles (i.e. to keep the total fractional
+    abundance 1). In this case, A is invertible and the steady-state solution
+    is X = -A^-1 * b.
 
     Parameters
     ----------
@@ -177,7 +178,6 @@ def solve_matrix_exponential_ss_new(matrix, source):
     eigenvectors : float array
         Eigenvectors for each (temperature, density).
     """
-
     # Calculate eigenvalues & eigenvectors of the ionization balance matrix
     # Put the density/temperature grid axes to the end of the ionization
     # balance array (required by numpy.linalg)
@@ -200,23 +200,8 @@ def solve_matrix_exponential_ss_new(matrix, source):
 
     # Handle the case where at least one of the eigenvalues is zero (which
     # means the ionization balance matrix is not invertible). This should be
-    # the case whenever transport terms are not directly included in the matrix.
+    # the case when there is no transport (i.e. when tau is infinity).
     if np.any(np.isclose(eigenvalues, 0)):
-
-        # When the ionization balance matrix has a zero eigenvalue, it conserves
-        # the total number of particles. The total source must then be zero.
-        # Otherwise, a steady-state solution does not exist (technically there
-        # is the steady-state solution where all populations are zero, but that
-        # is not physically interesting).
-        if not np.isclose(np.sum(source), 0):  # TODO: check if this works with a density/temperature grid
-            raise ValueError(
-                "Ionization balance matrix conserves total number of "
-                "particles, but a net source/sink is specified, which does not "
-                "permit a steady-state solution. This probably means that a "
-                "finite source/sink was specified without any transport in the "
-                "ionization balance matrix to balance it."
-            )
-
         # At steady-state, the only nonzero term in the solution will be the one
         # whose eigenvalue is zero. So the solution for each density/temperature
         # case is the eigenvector whose eigenvalue is zero.
@@ -234,18 +219,8 @@ def solve_matrix_exponential_ss_new(matrix, source):
         pops_ss = eigenvector_ss / np.sum(eigenvector_ss, axis=-1, keepdims=True)
 
     # Handle the case where all the eigenvalues are nonzero, indicating that
-    # the matrix is invertible. This is the case when transport terms are
-    # included in the matrix.
+    # the matrix is invertible. This is the case when there is transport.
     else:
-        # Check on relative strength of transport and source/sink to make sure
-        # they are balanced. If they aren't, then solution will not conserve #
-        # of particles
-        # TODO: does this actually matter though? I could just renormalize the solution
-        # I definitely need to catch the case where there is positive transport
-        # but zero source, as the particular solution is then zero, but the
-        # homogeneous solution blows up at infinity.
-        pass
-
         # If the source/sink and transport are balanced, then the steady-state
         # solution is the particular solution to the matrix ODE system.
         pops_ss = -np.einsum("...ij,...j", np.linalg.inv(matrix), source)
