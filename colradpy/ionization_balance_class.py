@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.interpolate import interp2d, RegularGridInterpolator
+from scipy.interpolate import RegularGridInterpolator
 from colradpy.colradpy_class import colradpy
 from colradpy.solve_matrix_exponential import (
     solve_matrix_exponential_source,
@@ -176,6 +176,7 @@ class ionization_balance():
                         self.data['input_file']['ccd'] = adf11['input_file']                        
                         
                     if 'qcd' not in self.data['cr_data']['gcrs'][str(j)]:
+                        # TODO: this throws an error if scd file is not first in list (same for xcd below)
                         self.data['cr_data']['gcrs'][str(j)]['qcd'] = np.zeros(
                             (
                                 np.shape(self.data['cr_data']['gcrs'][str(j)]['scd'])[0],
@@ -385,7 +386,7 @@ class ionization_balance():
             num_meta_upper = np.shape(self.data['cr_data']['gcrs'][str(i)]['scd'])[1]
             diag_lower = np.diag_indices(num_meta_lower)
             diag_upper = np.diag_indices(num_meta_upper)
-            
+
             # Consider pre-calculating m + diag_lower[0] since it gets used a lot?
             # Consider pre-calculating m + num_meta_lower since it gets used a lot?
 
@@ -449,6 +450,8 @@ class ionization_balance():
             self.data['user']['source'] = np.zeros(num_meta)
             self.data['user']['source'][0] = 1
         else:
+            if source.shape[0] != num_meta:
+                raise ValueError("source for each metastable must be provided")
             self.data['user']['source'] = source / source.sum(axis=0)
         self.data['user']['source'] *= self.data['user']['dens_grid'] / ne_tau
 
