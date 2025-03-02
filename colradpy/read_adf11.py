@@ -48,33 +48,41 @@ def read_adf11(fil):
         num_stages = adf11['input_file']['nuc_charge']
     else:
         num_stages = len(adf11['input_file']['metas'])
-    for i in range(0,num_stages):
+    for i in range(num_stages):
         adf11['input_file'][str(i)] = {}
+        # Initialize matrices of rate coefficients. Since ADF11 data is stored
+        # as the base-10 log of the rate, the matrices should be initialized to
+        # negative infinity (so converting to a rate gives zero).
         if any(x in file_type for x in ['scd', 'acd', 'ccd']):
-            adf11['input_file'][str(i)] = np.zeros((adf11['input_file']['metas'][i],
-                                                     adf11['input_file']['metas'][i+1],
-                                             len(adf11['input_file']['temp_grid']),
-                                             len(adf11['input_file']['dens_grid'])))
-        if( 'qcd' in file_type ):
-            adf11['input_file'][str(i)] = np.zeros((adf11['input_file']['metas'][i],
-                                                     adf11['input_file']['metas'][i],
-                                             len(adf11['input_file']['temp_grid']),
-                                             len(adf11['input_file']['dens_grid'])))
-        if('xcd' in file_type):
-            adf11['input_file'][str(i)] = np.zeros((adf11['input_file']['metas'][i+1],
-                                                     adf11['input_file']['metas'][i+1],
-                                             len(adf11['input_file']['temp_grid']),
-                                             len(adf11['input_file']['dens_grid'])))
-        if('plt' in file_type):
-            adf11['input_file'][str(i)] = np.zeros((adf11['input_file']['metas'][i],
-                                                     adf11['input_file']['metas'][i],
-                                             len(adf11['input_file']['temp_grid']),
-                                             len(adf11['input_file']['dens_grid'])))
-        if('prb' in file_type):
-            adf11['input_file'][str(i)] = np.zeros((adf11['input_file']['metas'][i],
-                                                     adf11['input_file']['metas'][i],
-                                             len(adf11['input_file']['temp_grid']),
-                                             len(adf11['input_file']['dens_grid'])))
+            adf11['input_file'][str(i)] = np.full(
+                (
+                    adf11['input_file']['metas'][i],
+                    adf11['input_file']['metas'][i+1],
+                    len(adf11['input_file']['temp_grid']),
+                    len(adf11['input_file']['dens_grid']),
+                ),
+                -np.inf,
+            )
+        if any(x in file_type for x in ['qcd', 'plt', 'prb']):
+            adf11['input_file'][str(i)] = np.full(
+                (
+                    adf11['input_file']['metas'][i],
+                    adf11['input_file']['metas'][i],
+                    len(adf11['input_file']['temp_grid']),
+                    len(adf11['input_file']['dens_grid']),
+                ),
+                -np.inf,
+            )
+        if 'xcd' in file_type:
+            adf11['input_file'][str(i)] = np.full(
+                (
+                    adf11['input_file']['metas'][i+1],
+                    adf11['input_file']['metas'][i+1],
+                    len(adf11['input_file']['temp_grid']),
+                    len(adf11['input_file']['dens_grid']),
+                ),
+                -np.inf,
+            )
 
     #Reading the GCR value portion
     gcr_line = f.readline()

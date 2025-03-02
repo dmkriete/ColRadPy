@@ -153,26 +153,60 @@ class ionization_balance():
                         self.data['input_file']['scd'] = adf11['input_file']
                         
                     if 'acd' in file:
-                        self.data['cr_data']['gcrs'][str(j)]['acd'] = interp_rates_adf11(adf11['input_file']['temp_grid'],
-                                                                                         adf11['input_file']['dens_grid'],
-                                                                          temp_grid,dens_grid,adf11['input_file'][str(j)])
+                        self.data['cr_data']['gcrs'][str(j)]['acd'] = interp_rates_adf11(
+                            adf11['input_file']['temp_grid'],
+                            adf11['input_file']['dens_grid'],
+                            temp_grid,
+                            dens_grid,
+                            adf11['input_file'][str(j)],
+                        )
                         self.data['input_file']['acd'] = adf11['input_file']
                         
                     if 'qcd' in file:
-                        self.data['cr_data']['gcrs'][str(j)]['qcd'] = interp_rates_adf11(adf11['input_file']['temp_grid'],
-                                                                                        adf11['input_file']['dens_grid'],
-                                                                         temp_grid,dens_grid,adf11['input_file'][str(j)])
+                        # Interpolator cannot handle negative infinities along
+                        # diagonal (caused by log of zero rate). Convert the
+                        # diagonal to zero before and after interpolation as a
+                        # workaround
+                        n = adf11['input_file'][str(j)].shape[0]
+                        adf11['input_file'][str(j)][np.diag_indices(n)] = 0
+                        self.data['cr_data']['gcrs'][str(j)]['qcd'] = interp_rates_adf11(
+                            adf11['input_file']['temp_grid'],
+                            adf11['input_file']['dens_grid'],
+                            temp_grid,
+                            dens_grid,
+                            adf11['input_file'][str(j)],
+                        )
+                        # Rates along diagonal get set to 1 due to
+                        # exponentiation inside interpolator, so set back to 0
+                        self.data['cr_data']['gcrs'][str(j)]['qcd'][np.diag_indices(n)] = 0
                         self.data['input_file']['qcd'] = adf11['input_file']
                         
                     if 'xcd' in file:
-                        self.data['cr_data']['gcrs'][str(j)]['xcd'] = interp_rates_adf11(adf11['input_file']['temp_grid'],
-                                                                                        adf11['input_file']['dens_grid'],
-                                                                         temp_grid,dens_grid,adf11['input_file'][str(j)])
+                        # Interpolator cannot handle negative infinities along
+                        # diagonal (caused by log of zero rate). Convert the
+                        # diagonal to zero before and after interpolation as a
+                        # workaround
+                        n = adf11['input_file'][str(j)].shape[0]
+                        adf11['input_file'][str(j)][np.diag_indices(n)] = 0
+                        self.data['cr_data']['gcrs'][str(j)]['xcd'] = interp_rates_adf11(
+                            adf11['input_file']['temp_grid'],
+                            adf11['input_file']['dens_grid'],
+                            temp_grid,
+                            dens_grid,
+                            adf11['input_file'][str(j)],
+                        )
+                        # Rates along diagonal get set to 1 due to
+                        # exponentiation inside interpolator, so set back to 0
+                        self.data['cr_data']['gcrs'][str(j)]['xcd'][np.diag_indices(n)] = 0
                         self.data['input_file']['xcd'] = adf11['input_file']                               
                     if 'ccd' in file:
-                        self.data['cr_data']['gcrs'][str(j)]['ccd'] = interp_rates_adf11(adf11['input_file']['temp_grid'],
-                                                                                        adf11['input_file']['dens_grid'],
-                                                                         htemp_grid,hdens_grid,adf11['input_file'][str(j)])
+                        self.data['cr_data']['gcrs'][str(j)]['ccd'] = interp_rates_adf11(
+                            adf11['input_file']['temp_grid'],
+                            adf11['input_file']['dens_grid'],
+                            htemp_grid,
+                            hdens_grid,
+                            adf11['input_file'][str(j)],
+                        )
                         self.data['input_file']['ccd'] = adf11['input_file']                        
                         
                     if 'qcd' not in self.data['cr_data']['gcrs'][str(j)]:
