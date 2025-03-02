@@ -486,8 +486,7 @@ class ionization_balance():
         else:
             if source.shape[0] != num_meta:
                 raise ValueError("source for each metastable must be provided")
-            if not np.isclose(source.sum(axis=0), 0):
-                self.data['user']['source'] = source / source.sum(axis=0)
+            self.data['user']['source'] = source / source.sum(axis=0)
         self.data['user']['source'] *= self.data['user']['dens_grid'] / ne_tau
 
 
