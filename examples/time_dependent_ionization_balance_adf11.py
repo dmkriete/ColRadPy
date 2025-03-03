@@ -13,24 +13,30 @@ import matplotlib.lines as mlines
 import colradpy
 
 
-#%% Specify element to analyze and path to ADF11 files
+#%% Specify element to analyze and path to ACD and SCD adf11 files
 element_name = 'carbon'
 element_symbol = 'C'
 num_charge_states = 7
 year = '96'
 metastable_resolved = True
+atomic_data_path = ''
 
+
+#%% Build list of atomic data file paths
 if metastable_resolved:
     r = 'r'
 else:
     r = ''
-files = np.array([
-    f'Atomic data/scd{year}{r}_{element_symbol.lower()}.dat',
-    f'Atomic data/acd{year}{r}_{element_symbol.lower()}.dat',
-    f'Atomic data/qcd{year}{r}_{element_symbol.lower()}.dat',
-    f'Atomic data/xcd{year}{r}_{element_symbol.lower()}.dat',
-    # f'Atomic data/ccd{year}{r}_{element_symbol.lower()}.dat',
-])
+files = [
+    os.path.join(atomic_data_path, f'scd{year}{r}_{element_symbol.lower()}.dat'),
+    os.path.join(atomic_data_path, f'acd{year}{r}_{element_symbol.lower()}.dat'),
+    # os.path.join(atomic_data_path, f'ccd{year}{r}_{element_symbol.lower()}.dat'),
+]
+if metastable_resolved:
+    files.extend([
+        os.path.join(atomic_data_path, f'qcd{year}{r}_{element_symbol.lower()}.dat'),
+        os.path.join(atomic_data_path, f'xcd{year}{r}_{element_symbol.lower()}.dat'),
+    ])
 
 
 #%% Run time-dependent ionization balance
@@ -49,12 +55,14 @@ ion_td = colradpy.ionization_balance(
 # Specify the transport and source (need to be balanced for total number of 
 # particles to be conserved)
 ne_tau = np.inf  # cm^-3 s
+# ne_tau = 1e11  # cm^-3 s
 num_metas = sum(ion_td.data["input_file"]["scd"]["metas"])
 source = np.zeros((num_metas, len(ion_td.data["user"]["temp_grid"]), len(ion_td.data["user"]["dens_grid"])))
 source[0] = 1  # Pure neutral source: models transport from lower Te region
 # source[-1] = 1  # Pure fully ionized source: models transport from higher Te region
 
 # Set up ionization matrix (with transport if desired)
+# TODO: fix bugs with time-dependent calculation when transport/source is included
 # ion_td.populate_ion_matrix(ne_tau, source)
 ion_td.populate_ion_matrix()
 
