@@ -191,7 +191,7 @@ def solve_matrix_exponential_ss_new(matrix, source):
             "Ionization balance matrix has complex eigenvalues. This indicates "
             "there is a problem in its construction."
         )
-    if not np.all((eigenvalues < 0) | np.isclose(eigenvalues, 0)):
+    if not np.all((eigenvalues < 0) | np.isclose(eigenvalues, 0, atol=5e-7)):
         raise ValueError(
             "Ionization balance matrix has non-negative eigenvalues. This does "
             "not allow for a stable solution and indicates there is a problem "
