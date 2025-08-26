@@ -28,10 +28,10 @@ expected steady-state distribution. To model the effect of transport, this
 calculation allows the user to specify a 'dwell time' characterizing the
 strength of transport along with a source of ions for each charge/metastable
 state. A smaller dwell time corresponds to stronger transport. To model a
-situation where ions are moving from regions to lower to higher temperature
+situation where ions are moving from regions of lower to higher temperature
 (e.g. influx of sputtered neutral impurities), the source distribution should
 be weighted toward lower charge states. To model the opposite (e.g. outflux of
-fully ionized impurities from the confined plasma to the scrape-off layer),
+fully ionized impurities from the confined plasma into the scrape-off layer),
 the source distribution should be weighted toward higher charge states.
 """
 
@@ -48,7 +48,7 @@ element_symbol = 'C'
 num_charge_states = 7  # Atomic number + 1
 year = '96'
 metastable_resolved = False
-atomic_data_path = ''
+# atomic_data_path = ''  # Specify directory where ADF11 files are stored locally
 
 
 #%% Build list of atomic data file paths
@@ -81,8 +81,9 @@ ion = colradpy.ionization_balance(
 )
 
 # Specify the transport and relative source for each charge state
-ne_tau = np.inf  # cm^-3 s
-# ne_tau = 1e11  # cm^-3 s
+ne_tau = np.inf  # cm^-3 s, no transport
+# ne_tau = 1e11  # cm^-3 s, moderate transport
+# ne_tau = 1e9  # cm^-3 s, strong transport
 num_metas = sum(ion.data["input_file"]["scd"]["metas"])
 source = np.zeros((num_metas, len(ion.data["user"]["temp_grid"]), len(ion.data["user"]["dens_grid"])))
 source[0] = 1  # Pure neutral source: models transport from lower Te region
@@ -113,8 +114,8 @@ def plot_fractional_abundance(ne_index, TH_index=None, nH_index=None):
 
     metas = ion.data["input_file"]["scd"]["metas"]  # number of metastables for each charge state
     m = 0  # index of the metastable state corresponding to the ground state of the current charge state
-    colors = plt.get_cmap("tab10").colors  # Will need to expand this for Ne & beyond
-    linestyles = ["--", ":", "-.", (5, (10, 3))]  # Will need to expand this for atoms with more than 4 metastables per charge state
+    colors = plt.get_cmap("rainbow")(np.linspace(0, 1, num_metas))
+    linestyles = ["--", ":", "-.", (5, (10, 3))]  # TODO: Will need to expand this for atoms with more than 4 metastables per charge state
     linestyles = linestyles[:np.max(metas)]  # Reduce number of linestyles down to just what is needed
 
     for charge_state in range(num_charge_states):  # loop over all charge states
@@ -159,9 +160,6 @@ def plot_fractional_abundance(ne_index, TH_index=None, nH_index=None):
     ax.set_xlabel("Electron temperature (eV)")
     ax.set_ylabel("Fractional abundance")
     ax.set_title(title)
-    
-    # filename = f"fractional_abundance_{element_symbol.lower()}_ss_ne={ion.data['user']['dens_grid'][ne_index]:.2e}_ntau={ne_tau:.2e}"
-    # fig.savefig(os.path.join(os.getcwd(), "Results", filename + ".png"), dpi=300)
 
 for ne_index in range(len(ion.data["user"]["dens_grid"])):
     plot_fractional_abundance(ne_index)
