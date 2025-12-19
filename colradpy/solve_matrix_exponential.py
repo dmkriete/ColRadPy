@@ -165,7 +165,7 @@ def solve_matrix_exponential_ss_new(matrix, source):
     matrix : float array
         Collisional-radiative matrix, possibly including transport terms. Has
         shape (num_metastable, num_metastable, num_temperature, num_density).
-    source : float
+    source : float array
         Source vector in particles per second. Has shape
         (num_metastable, num_temperature, num_density).
 

@@ -487,7 +487,11 @@ class ionization_balance():
             if source.shape[0] != num_meta:
                 raise ValueError("source for each metastable must be provided")
             self.data['user']['source'] = source / source.sum(axis=0)
-        self.data['user']['source'] *= self.data['user']['dens_grid'] / ne_tau
+        if self.data['user']['source'].ndim == 1:  # Add dummy temp/dens axes
+            self.data['user']['source'] = self.data['user']['source'][:, np.newaxis, np.newaxis]
+        self.data['user']['source'] = (
+            self.data['user']['source'] * self.data['user']['dens_grid'] / ne_tau
+        )
 
 
     def solve_time_dependent(self, soln_times, init_abund=np.array([])):
