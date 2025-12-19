@@ -89,6 +89,8 @@ def read_adf11(fil):
     ii = 0
     
     while len(gcr_line.strip()) != 0 and 'C-' not in gcr_line:
+        if all(c == '-' for c in gcr_line[:-1]):  # Handle files (like scd12_h) that are missing the C character at end of file
+            break
         #look for the stage identifying line
         if('----------' in gcr_line):
             dens_count = 0
