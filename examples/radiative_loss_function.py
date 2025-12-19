@@ -56,8 +56,9 @@ ion = colradpy.ionization_balance(
 )
 
 # Specify the transport and relative source for each charge state
-ne_tau = np.inf  # cm^-3 s
-# ne_tau = 1e11  # cm^-3 s
+ne_tau = np.inf  # cm^-3 s, no transport
+# ne_tau = 1e11  # cm^-3 s, moderate transport
+# ne_tau = 1e9  # cm^-3 s, strong transport
 source = np.zeros((num_charge_states, len(ion.data["user"]["temp_grid"]), len(ion.data["user"]["dens_grid"])))
 source[0] = 1  # Pure neutral source -> transport from lower Te region
 # source[-1] = 1  # Pure fully ionized source -> transport from higher Te region
@@ -160,9 +161,6 @@ def plot_radiative_loss_function(ne_index, TH_index=None, nH_index=None):
     solid_line = mlines.Line2D([], [], linestyle="-", color="black", label="total")
     leg2 = ax.legend(handles=[dashed_line, dotted_line, solid_line], title="processes", loc="upper right", bbox_to_anchor=(0, 0, 0.80, 1))
     leg2.set_draggable(True)
-    
-    filename = f"radiative_loss_function_{element_symbol.lower()}_ss_ne={ion.data['user']['dens_grid'][ne_index]:.2e}_ntau={ne_tau:.2e}"
-    fig.savefig(os.path.join(os.getcwd(), "Results", filename + ".png"), dpi=300)
 
 for ne_index in range(len(ion.data["user"]["dens_grid"])):
     plot_radiative_loss_function(ne_index)
