@@ -88,6 +88,7 @@ def get_git_hash(base_path=None):
     # Nothing worked
     return "unknown"
 
+
 def convert_to_air(lam):
     """This function converts the vacuum wavelength of spectral lines to 
        the air wavelength. The wavelength is the difference in energy
@@ -104,6 +105,8 @@ def convert_to_air(lam):
     
     s = 10**3/lam
     return 1 + 0.0000834254 + 0.02406147 / (130 - s**2) + 0.00015998 / (38.9 - s**2)
+
+
 def myprint(d):
     for k, v in d.items():
         if isinstance(v, dict):
@@ -190,18 +193,34 @@ class colradpy():
 
     """
     
-    def __init__(self,fil,metas=np.array([]),temp_grid=np.array([]),electron_den=np.array([]),
-                 htemp_grid = np.array([]), hdens_grid = np.array([]),
-                 use_ionization=True,suppliment_with_ecip=True,use_recombination_three_body=True,
-                 use_recombination = True, td_t = np.array([]), td_n0=np.array([]),td_source=np.array([]),
-                  default_pop_norm=True,temp_dens_pair=False,rate_interp_ion = 'slinear',
-                 rate_interp_recomb='log_slinear',rate_interp_col='log_slinear',
-                 rate_interp_cx='log_quadratic',use_cx=False,scale_file_ioniz=False,
-                 ne_tau = -1):
-        
-        """The initializing method. Sets up the nested list for data storage and starts to populate with user data
-           as well as reading in the adf04 file
-
+    def __init__(
+        self,
+        fil,
+        metas=np.array([]),
+        temp_grid=np.array([]),
+        electron_den=np.array([]),
+        htemp_grid = np.array([]),
+        hdens_grid = np.array([]),
+        use_ionization=True,
+        suppliment_with_ecip=True,
+        use_recombination_three_body=True,
+        use_recombination=True,
+        td_t = np.array([]),
+        td_n0=np.array([]),
+        td_source=np.array([]),
+        default_pop_norm=True,
+        temp_dens_pair=False,
+        rate_interp_ion='slinear',
+        rate_interp_recomb='log_slinear',
+        rate_interp_col='log_slinear',
+        rate_interp_cx='log_quadratic',
+        use_cx=False,
+        scale_file_ioniz=False,
+        ne_tau = -1,
+    ):
+        """
+        The initializing method. Sets up the nested list for data storage and
+        starts to populate with user data as well as reading in the adf04 file.
         """
 
         self.data = {}
@@ -750,7 +769,7 @@ class colradpy():
 
            The dictionary ['cr_matrix'] is made in this definition mostly from rates in the ['rates'] dictionary.
         """
-        
+
         #add in the excitation/de-excitation if they are not already calculated
         if('col_excit_interp' not in self.data['rates']['excit'].keys()):
             print('Electron collisional rates have not yet been made on '+\
@@ -1037,7 +1056,6 @@ class colradpy():
                                           self.data['user']['dens_grid']**2),axis=0)
 
 
-
             if(self.data['user']['use_cx']):
 
                 for p in range(0,nsigmaplus_cx):
@@ -1059,127 +1077,83 @@ class colradpy():
                                                        self.data['user']['dens_grid'])
 
 
-
-
-            
-
-                
     def solve_quasi_static(self):
-        """This function will solve the CR matrix using the quasistatic approximation, after solving this problem
-           the generalized radiative coefficients GCRs will be calculated other claculated quanities such as 
-           PEC and SXB are also calculated. This function is analgous to ADAS208.
-
-
-           Creates the ['processed'] dictionary which will hold all of the quanties that require the CR
-           matrix to be solved in order to be obtained. 
-           
         """
-        
-        if('cr_matrix' not in self.data.keys()):
+        This function will solve the CR matrix using the quasistatic
+        approximation. After solving this problem the generalized radiative
+        coefficients GCRs will be calculated. Other claculated quanities such
+        as PEC and SXB are also calculated. This function is analgous to
+        ADAS208.
+
+        Creates the ['processed'] dictionary which will hold all of the
+        quanties that require the CR matrix to be solved in order to be
+        obtained.
+        """
+        if 'cr_matrix' not in self.data.keys():
             self.populate_cr_matrix()
-        levels_to_keep = np.setdiff1d( np.linspace(0,len(self.data['atomic']['energy'])-1,
-                                              len(self.data['atomic']['energy']) ,dtype='int64'),
-                                       self.data['atomic']['metas'])
 
+        # Calculate several useful quantities
+        num_levels = len(self.data['atomic']['energy'])
+        num_parents = len(self.data['atomic']['ion_pot'])
+        num_metas = len(self.data['atomic']['metas'])
+        meta_levels = self.data['atomic']['metas']
+        exc_levels = np.setdiff1d(np.arange(num_levels), meta_levels)
+        new_axis = (() if self.data['user']['temp_dens_pair'] else (1,))
 
-        #[:,0:len(self.data['atomic']['metas']),:,:] 
-        self.data['cr_matrix']['beta']= \
-                                          -self.data['cr_matrix']['cr'][levels_to_keep][:,self.data['atomic']['metas']]
-        cr_red = self.data['cr_matrix']['cr'][levels_to_keep][:,levels_to_keep]
+        self.data['cr_matrix']['beta'] = -self.data['cr_matrix']['cr'][exc_levels, meta_levels]
+        cr_red = self.data['cr_matrix']['cr'][exc_levels, exc_levels]
 
+        # TODO: move these "storage" type operations to end of function?
         self.data['processed'] = {}
         self.data['cr_matrix']['cr_red'] = cr_red
-        self.data['processed']['excited_levels'] = levels_to_keep
+        self.data['processed']['excited_levels'] = exc_levels
 
-        recomb_drive_lvls = np.array([])
-        if(self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']):
-            #num_recombs = np.shape(self.data['rates']['recomb']['recombination'])[1]
-            num_recombs = len(self.data['atomic']['ion_pot'])
-            recomb_driving_lvls = len(self.data['atomic']['energy']) + \
-                                  np.linspace(0,num_recombs-1,num_recombs,dtype=int)
-            self.data['cr_matrix']['beta'] = np.append(self.data['cr_matrix']['beta'],
-                                            -self.data['cr_matrix']['cr'][levels_to_keep][:,recomb_driving_lvls],axis=1)
+        if self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']:
+            recomb_driving_lvls = num_levels + np.arange(num_parents)
+            self.data['cr_matrix']['beta'] = np.append(
+                self.data['cr_matrix']['beta'],
+                -self.data['cr_matrix']['cr'][exc_levels, recomb_driving_lvls],
+                axis=1,
+            )
 
+        if self.data['user']['use_cx']:
+            num_cxs = len(np.unique(self.data['rates']['cx']['cx_transitions'][:,1]))
+            cx_driving_lvls = num_levels + num_parents + np.arange(num_cxs)
+            self.data['cr_matrix']['beta'] = np.append(
+                self.data['cr_matrix']['beta'],
+                -self.data['cr_matrix']['cr'][exc_levels, cx_driving_lvls],
+                axis=1,
+            )
 
+        # Calculate excited state populations (Eq. 3.23 in C. Johnson thesis)
+        # TODO: consider reordering CR matrix to put n_e/T_e axes first, as this would simplify many of the linear algebra operations
+        cr_red = np.moveaxis(cr_red, (0, 1), (-2, -1))  # Put CR matrix axes last to facilitate inversion
+        cr_red_inv = np.linalg.inv(cr_red)
+        self.data['cr_matrix']['cr_red_inv'] = np.moveaxis(cr_red_inv, (-2, -1), (0, 1))  # Put CR matrix axes back to beginning
+        self.data['processed']['pops'] = np.einsum(
+            'ij...,jn...->in...',
+            self.data['cr_matrix']['cr_red_inv'],
+            self.data['cr_matrix']['beta'],
+        )
 
-        if(self.data['user']['use_cx']):
-            nsigmaplus_cx = 0
-            if(self.data['user']['use_cx']):
-                num_cxs = len(np.unique(self.data['rates']['cx']['cx_transitions'][:,1]))
-
-            cx_driving_lvls = len(self.data['atomic']['energy']) + len(recomb_driving_lvls)+\
-                                  np.linspace(0,num_cxs-1,num_cxs,dtype=int)
-            self.data['cr_matrix']['beta'] = np.append(self.data['cr_matrix']['beta'],
-                                            -self.data['cr_matrix']['cr'][levels_to_keep][:,cx_driving_lvls],axis=1)
-
-            
-            
-        if(self.data['user']['temp_dens_pair']):
-            self.data['cr_matrix']['cr_red_inv'] = np.zeros((len(cr_red),len(cr_red), len(self.data['user']['temp_grid'])))
-            self.data['cr_matrix']['cr_red_inv'] = np.linalg.inv(cr_red.transpose(2,0,1)).transpose(1,2,0)
-
-            if(self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']):
-                self.data['processed']['pops'] = np.zeros((len(cr_red),
-                                                len(self.data['atomic']['metas'])+len(self.data['atomic']['ion_pot']),
-                                                len(self.data['user']['temp_grid'])))
-            else:
-                self.data['processed']['pops'] = np.zeros((len(cr_red),
-                                                len(self.data['atomic']['metas']),
-                                                len(self.data['user']['temp_grid'])))
-
-            self.data['processed']['pops'] = np.einsum('ijk,jnk->ink',
-                                                   self.data['cr_matrix']['cr_red_inv'],
-                                                   self.data['cr_matrix']['beta'])
-
-
-
-
-
-
-                
-        else:
-            self.data['cr_matrix']['cr_red_inv'] = np.zeros((len(cr_red),len(cr_red), len(self.data['user']['temp_grid']),
-                               len(self.data['user']['dens_grid'])))
-        
-            self.data['cr_matrix']['cr_red_inv'] = np.linalg.inv(cr_red.transpose(2,3,0,1)).transpose(2,3,0,1)
-
-
-            '''This part of code was not needed because of using einsum
-            if(self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']):
-                self.data['processed']['pops'] = np.zeros((len(cr_red),
-                                                len(self.data['atomic']['metas'])+len(self.data['atomic']['ion_pot']),
-                                                len(self.data['user']['temp_grid']),
-                                                len(self.data['user']['dens_grid'])))
-            else:
-                self.data['processed']['pops'] = np.zeros((len(cr_red),
-                                                len(self.data['atomic']['metas']),
-                                                len(self.data['user']['temp_grid']),
-                                                len(self.data['user']['dens_grid'])))
-            '''
-            self.data['processed']['pops'] = np.einsum('ijkl,jnkl->inkl',
-                                                   self.data['cr_matrix']['cr_red_inv'],
-                                                   self.data['cr_matrix']['beta'])
-        #normalization of populations is done here. Quasistatic approximation assumes that
-        #there is a small population in 'excited' states, this is sometimes not the case
-        #so the populations must be renomalized the default when there is one metastable
-        #present is to normalize, but there is a choice for the user to decide
-        #default when there is more than one metastable is to not normalize
-
-
-
-        if(len(self.data['atomic']['metas']) > 1):
-
+        # Normalize the excited state populations
+        # Quasistatic approximation assumes that there is a small population in
+        # 'excited' states, but this is sometimes not the case, so the
+        # populations must be renomalized. The default when there is one
+        # metastable present is to normalize, but there is a choice for the
+        # user to decide. The default when there is more than one metastable is
+        # to not normalize.
+        if num_metas > 1:
             self.data['processed']['driving_populations_norm'] = False
         else:
             self.data['processed']['driving_populations_norm'] = True
-
-        if(not self.data['user']['default_pop_norm']):
-            self.data['processed']['driving_populations_norm'] =\
-                          not self.data['processed']['driving_populations_norm']
-
-        if(self.data['processed']['driving_populations_norm']):
-            self.data['processed']['pops'] = self.data['processed']['pops'] /\
-                                             (1 + np.sum(self.data['processed']['pops'],axis=0))
+        # TODO: I'm confused why the below code inverts the above setting; shouldn't it just set it to False?
+        if not self.data['user']['default_pop_norm']:
+            self.data['processed']['driving_populations_norm'] = (
+                not self.data['processed']['driving_populations_norm']
+            )
+        if self.data['processed']['driving_populations_norm']:
+            self.data['processed']['pops'] /= (1 + np.sum(self.data['processed']['pops'], axis=0))
 
         #setup pec and wavelength stuff start them as lists because
         #we wont know which levels actually have pec values before we loop through them
@@ -1190,299 +1164,159 @@ class colradpy():
 
         plt = []
         for i in range(0,len(self.data['cr_matrix']['A_ji'])):
-            for j in range(0,len(levels_to_keep)):
+            for j in range(len(exc_levels)):
                 #if statement here because there will be a number of transitions that have zero
                 #for the PEC value and don't want to have to keep track of these.
 
-                if(levels_to_keep[j] > i ):#and self.data['cr_matrix']['A_ji'][j,i] > 1E-31):
+                if(exc_levels[j] > i ):#and self.data['cr_matrix']['A_ji'][j,i] > 1E-31):
 
-                    self.data['processed']['pecs'].append( self.data['cr_matrix']['A_ji'][levels_to_keep[j],i]*\
+                    self.data['processed']['pecs'].append( self.data['cr_matrix']['A_ji'][exc_levels[j],i]*\
                                                         self.data['processed']['pops'][j]/ \
                                                         self.data['user']['dens_grid'])
                     #convert cm-1 to eV with /8100
                     #convert eV to joules *1.6021e-19
                     #convert to from W to erg/s to stay in cgs 1e7
-                    plt.append(np.abs(self.data['atomic']['energy'][levels_to_keep[j]] - self.data['atomic']['energy'][i])/\
-                               8100*1.60218e-19*(self.data['cr_matrix']['A_ji'][levels_to_keep[j],i]*\
+                    plt.append(np.abs(self.data['atomic']['energy'][exc_levels[j]] - self.data['atomic']['energy'][i])/\
+                               8100*1.60218e-19*(self.data['cr_matrix']['A_ji'][exc_levels[j],i]*\
                                                         self.data['processed']['pops'][j]/ \
                                                         self.data['user']['dens_grid'])*1.e7)
    
-                    self.data['processed']['wave_vac'].append(1.e7/abs(self.data['atomic']['energy'][levels_to_keep[j]]\
+                    self.data['processed']['wave_vac'].append(1.e7/abs(self.data['atomic']['energy'][exc_levels[j]]\
                                                                         - self.data['atomic']['energy'][i]))
 
-                    self.data['processed']['pec_levels'].append( np.array([levels_to_keep[j],i]))
-
+                    self.data['processed']['pec_levels'].append( np.array([exc_levels[j],i]))
 
         self.data['processed']['pls'] = np.asarray(plt)
-        self.data['processed']['plt'] = np.sum(np.asarray(plt)[:,0:len(self.data['atomic']['metas'])], axis=0)
-        self.data['processed']['prb'] = np.sum(np.asarray(plt)[:,len(self.data['atomic']['metas']):], axis=0)        
+        self.data['processed']['plt'] = np.sum(np.asarray(plt)[:,:num_metas], axis=0)
+        self.data['processed']['prb'] = np.sum(np.asarray(plt)[:,num_metas:], axis=0)
         #sum over all the deltaE *PEC values note that the units are W m3
-
         self.data['processed']['pecs'] = np.asarray(self.data['processed']['pecs'])
-
         self.data['processed']['wave_vac'] = np.asarray(self.data['processed']['wave_vac'])
         self.data['processed']['wave_air'] = self.data['processed']['wave_vac']/ \
                                                        convert_to_air(self.data['processed']['wave_vac'])
         self.data['processed']['pec_levels'] = np.asarray(self.data['processed']['pec_levels'])
 
-        if(self.data['user']['temp_dens_pair']):
-
-            self.data['processed']['scd'] = np.zeros((len(self.data['atomic']['metas']),
-                                                      len(self.data['atomic']['ion_pot']),
-                                                      len(self.data['user']['temp_grid'])))
-            self.data['processed']['acd'] = np.zeros((len(self.data['atomic']['metas']),
-                                                      len(self.data['atomic']['ion_pot']),
-                                                      len(self.data['user']['temp_grid'])))
-            self.data['processed']['ccd'] = np.zeros((len(self.data['atomic']['metas']),
-                                                      len(self.data['atomic']['ion_pot']),
-                                                      len(self.data['user']['temp_grid'])))
-            self.data['processed']['xcd'] = np.zeros((len(self.data['atomic']['ion_pot']),
-                                                      len(self.data['atomic']['ion_pot']),
-                                                      len(self.data['user']['temp_grid'])))
-            self.data['processed']['pop_lvl'] = np.zeros((len(self.data['cr_matrix']['cr_red_inv']),
-                                                           len(self.data['cr_matrix']['cr_red_inv']),
-                                                           len(self.data['atomic']['metas']),
-                                                           len(self.data['user']['temp_grid'])))
-
-            #these are how levels get populated
-            self.data['processed']['pop_lvl'] = np.einsum('ijk,jmk->ijmk',
-                                                          self.data['cr_matrix']['cr_red_inv'],
-                                                          self.data['cr_matrix']['beta'][:,:,:])
-
-            self.data['processed']['pops_no_norm'] = np.sum(self.data['processed']['pop_lvl'],axis=1)
-
-            if(self.data['processed']['driving_populations_norm']):
-                self.data['processed']['pop_lvl'] = self.data['processed']['pop_lvl']/   \
-                                                (1+np.sum(np.sum(self.data['processed']['pop_lvl'],axis=1),axis=0))
-            
-            #the F matrix
-
-            ##############################################################
-            #
-            # NOT THE SAME AS THE ADAS DEFINITION, ADAS DIVIDES BY n_e
-            #
-            ###############################################################
-            self.data['processed']['F'] = np.sum(self.data['processed']['pop_lvl']\
-                                                 [:,:,0:len(self.data['atomic']['metas']),:],axis=1)
-            #effective ionization rate
-            if(self.data['user']['use_ionization']):
-                self.data['processed']['scd'] = np.einsum('ipk,imk->mpk',
-                                                          self.data['rates']['ioniz']['ionization'][levels_to_keep,:],
-                                                          self.data['processed']['F'])
-
-                if(self.data['processed']['driving_populations_norm']):
-                    self.data['processed']['scd'] = self.data['processed']['scd'] + \
-                                                  np.einsum('ipk,ik->ipk',
-                                                  self.data['rates']['ioniz']['ionization'][self.data['atomic']['metas'],:],
-                              1/(1+np.sum(self.data['processed']['pops_no_norm'][:,self.data['atomic']['metas'],:],axis=0)))
-
-                else:
-                    self.data['processed']['scd'] = self.data['processed']['scd'] + \
-                                             self.data['rates']['ioniz']['ionization'][self.data['atomic']['metas'],:,:]
-
-
-            if(self.data['user']['use_recombination'] and self.data['user']['use_recombination_three_body']):
-                #this is the total recombination with three body and the rates that in included in the adf04 file
-                recomb_coeff = np.einsum('ijk,k->ijk',
-                                         self.data['rates']['recomb']['recomb_three_body'],
-                                         self.data['user']['dens_grid']) + \
-                                         self.data['rates']['recomb']['recombination'][:,:,:]
-            elif(self.data['user']['use_recombination']):
-                recomb_coeff = self.data['rates']['recomb']['recombination'][:,:,:]
-            elif(self.data['user']['use_recombination_three_body']):            
-                recomb_coeff = np.einsum('ijk,k->ijk',
-                                         self.data['rates']['recomb']['recomb_three_body'],
-                                         self.data['user']['dens_grid'])
-            if(self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']):
-                #effective recombination rate
-                self.data['processed']['acd'] = -np.einsum('njk,jmk->nmk',
-
-                               self.data['cr_matrix']['cr'][np.c_[self.data['atomic']['metas']], levels_to_keep,:],
-                               np.einsum('ijk,jmk->imk', self.data['cr_matrix']['cr_red_inv'][0:len(self.data['atomic']['energy']),
-                               0:len(self.data['atomic']['energy']),:],
-                               recomb_coeff[levels_to_keep,:,:]))
-
-                self.data['processed']['acd'] = self.data['processed']['acd'] + recomb_coeff[self.data['atomic']['metas'],:,:]
-
-            if(self.data['user']['use_cx']):
-                #effective thermal charge exchange coefficient
-                self.data['processed']['ccd'] = -np.einsum('njk,jmk->nmk',
-
-                               self.data['cr_matrix']['cr'][np.c_[self.data['atomic']['metas']], levels_to_keep,:],
-                               np.einsum('ijk,jmk->imk', self.data['cr_matrix']['cr_red_inv'][0:len(self.data['atomic']['energy']),
-                               0:len(self.data['atomic']['energy']),:],
-                               self.data['rates']['cx']['cx'][levels_to_keep,:,:]))
-
-                self.data['processed']['ccd'] = self.data['processed']['ccd'] + \
-                                                self.data['rates']['cx']['cx'][self.data['atomic']['metas'],:,:]
-                
-            self.data['processed']['qcd'] = np.zeros((len(self.data['atomic']['metas']),
-                                                      len(self.data['atomic']['metas']),
-                                                      len(self.data['user']['temp_grid'])))
-
-            t = []
-            for n in range(0,len(self.data['atomic']['metas'])):
-                metas_to_keep = np.setdiff1d( self.data['atomic']['metas'],
-                                              self.data['atomic']['metas'][n])
-                #calculate the metastable cross coupling coefficent, this the number of atoms that start in one
-                #metastable and then end up in a different metastable
-                metas_to_keep_ind = np.arange(self.data['atomic']['metas'].shape[0])\
-                                         [np.in1d(self.data['atomic']['metas'], metas_to_keep)]
-                if(len(self.data['processed']['qcd']) > 1):
-
-                    self.data['processed']['qcd'][metas_to_keep_ind,n,:] = np.einsum('nk,k->nk',
-
-                                            self.data['cr_matrix']['cr'][self.data['atomic']['metas'][n],metas_to_keep,:] +\
-                                            np.einsum('mk,mnk->nk', self.data['cr_matrix']['cr'][self.data['atomic']['metas'][n],
-                                            levels_to_keep,:],
-                                            self.data['processed']['F'][:,metas_to_keep_ind,:])
-                                            ,1/self.data['user']['dens_grid'])
-
-            if(self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']):            
-                for m in range(0,len(self.data['atomic']['ion_pot'])):
-
-                    metasplus_to_keep = np.setdiff1d( np.linspace(0,len(self.data['atomic']['ion_pot'])-1,
-                                                                  len(self.data['atomic']['ion_pot']),dtype='int'),m)
-                    metasplus_to_keep_ind = np.arange(self.data['atomic']['ion_pot'].shape[0])\
-                                         [np.in1d(self.data['atomic']['ion_pot_lvl']-1, metasplus_to_keep)]
-                    #parent cross coupling coefficient, start in the parent atom, recombine get redistrubted then
-                    #ionize back into the parent but into a different parent metastable
-                    if(len(self.data['processed']['xcd']) > 1):
-                        self.data['processed']['xcd'][metasplus_to_keep_ind,np.array([m]),:] =-np.einsum('ik,imk->mk',
-
-                                self.data['rates']['ioniz']['ionization'][levels_to_keep,m,:],np.einsum('ijk,jmk->imk',
-                                self.data['cr_matrix']['cr_red_inv'][0:len(self.data['atomic']['energy']),
-                                                                     0:len(self.data['atomic']['energy']),:],
-                                recomb_coeff[len(self.data['atomic']['metas']):len(self.data['atomic']['energy']),metasplus_to_keep,:]))
-
-        else:
+        # Calculate generalized collisional radiative (GCR) coefficients
         
-            self.data['processed']['scd'] = np.zeros((len(self.data['atomic']['metas']),
-                                                      len(self.data['atomic']['ion_pot']),
-                                                      len(self.data['user']['temp_grid']),
-                                                      len(self.data['user']['dens_grid'])))
-            self.data['processed']['acd'] = np.zeros((len(self.data['atomic']['metas']),
-                                                      len(self.data['atomic']['ion_pot']),
-                                                      len(self.data['user']['temp_grid']),
-                                                      len(self.data['user']['dens_grid'])))
-            self.data['processed']['ccd'] = np.zeros((len(self.data['atomic']['metas']),
-                                                      len(self.data['atomic']['ion_pot']),
-                                                      len(self.data['user']['temp_grid']),
-                                                      len(self.data['user']['dens_grid'])))
-            
-            self.data['processed']['xcd'] = np.zeros((len(self.data['atomic']['ion_pot']),
-                                                      len(self.data['atomic']['ion_pot']),
-                                                      len(self.data['user']['temp_grid']),
-                                                      len(self.data['user']['dens_grid'])))
-            self.data['processed']['pop_lvl'] = np.zeros((len(self.data['cr_matrix']['cr_red_inv']),
-                                                           len(self.data['cr_matrix']['cr_red_inv']),
-                                                           len(self.data['atomic']['metas']),
-                                                           len(self.data['user']['temp_grid']),
-                                                           len(self.data['user']['dens_grid'])))
-            #these are how levels get populated
-            self.data['processed']['pop_lvl'] = np.einsum('ijkl,jmkl->ijmkl',
-                                                          self.data['cr_matrix']['cr_red_inv'],
-                                                          self.data['cr_matrix']['beta'][:,:,:,:])
+        # Initialize matrices to hold GCR coefficients
+        temp_dens_shape = self.data['cr_matrix']['cr'].shape[2:]
+        self.data['processed']['scd'] = np.zeros((num_metas, num_parents) + temp_dens_shape)
+        self.data['processed']['acd'] = np.zeros((num_metas, num_parents) + temp_dens_shape)
+        self.data['processed']['ccd'] = np.zeros((num_metas, num_parents) + temp_dens_shape)
+        self.data['processed']['qcd'] = np.zeros((num_metas, num_metas) + temp_dens_shape)
+        self.data['processed']['xcd'] = np.zeros((num_parents, num_parents) + temp_dens_shape)
 
-            self.data['processed']['pops_no_norm'] = np.sum(self.data['processed']['pop_lvl'],axis=1)
+        # Calculate how levels are populated
+        self.data['processed']['pop_lvl'] = np.einsum(
+            'ij...,jm...->ijm...',
+            self.data['cr_matrix']['cr_red_inv'],
+            self.data['cr_matrix']['beta'],
+        )
+        self.data['processed']['pops_no_norm'] = np.sum(self.data['processed']['pop_lvl'], axis=1)
+        if self.data['processed']['driving_populations_norm']:
+            self.data['processed']['pop_lvl'] /= (1 + np.sum(self.data['processed']['pop_lvl'], axis=(0, 1)))
 
-            if(self.data['processed']['driving_populations_norm']):
-                self.data['processed']['pop_lvl'] = self.data['processed']['pop_lvl']/   \
-                                                (1+np.sum(np.sum(self.data['processed']['pop_lvl'],axis=1),axis=0))
+        # Calculate the F matrix (note: not same definition as ADAS; ADAS divides by n_e)
+        self.data['processed']['F'] = np.sum(
+            self.data['processed']['pop_lvl'][:, :, :num_metas],
+            axis=1,
+        )
 
-            
-            #the F matrix
+        # Calculate effective ionization (SCD) coefficients
+        if self.data['user']['use_ionization']:
+            ioniz_rates = self.data['rates']['ioniz']['ionization']
+            ioniz_metas = ioniz_rates[meta_levels]
+            # Add ionization contribution from excited levels
+            self.data['processed']['scd'] += np.einsum(
+                'ipk,imk...->mpk...',
+                self.data['rates']['ioniz']['ionization'][exc_levels],
+                self.data['processed']['F'],
+            )
+            # Add ionization contribution from metastable levels
+            if self.data['processed']['driving_populations_norm']:
+                self.data['processed']['scd'] += np.einsum(
+                    'ipk,ik...->ipk...',
+                    ioniz_metas,
+                    1 / (1 + np.sum(self.data['processed']['pops_no_norm'][:, meta_levels], axis=0))
+                )
+            else:
+                new_shape = ioniz_metas.shape + new_axis
+                self.data['processed']['scd'] += ioniz_metas.reshape((new_shape))
 
-            self.data['processed']['F'] = np.sum(self.data['processed']['pop_lvl']\
-                                                 [:,:,0:len(self.data['atomic']['metas']),:,:],axis=1)
-            #effective ionization rate
-            if(self.data['user']['use_ionization']):
-                self.data['processed']['scd'] = np.einsum('ipk,imkl->mpkl',
-                                                          self.data['rates']['ioniz']['ionization'][levels_to_keep,:,:],
-                                                          self.data['processed']['F'])
+        # Calculate effective recombination (ACD) coefficients
+        if self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']:
+            recomb_rates = np.zeros((num_levels, num_parents) + temp_dens_shape)
+            if self.data['user']['use_recombination']:
+                new_shape = self.data['rates']['recomb']['recombination'].shape + new_axis
+                recomb_rates += self.data['rates']['recomb']['recombination'].reshape(new_shape)
+            if self.data['user']['use_recombination_three_body']:
+                recomb_rates += np.einsum(
+                    'ijk,k->ijk' if self.data['user']['temp_dens_pair'] else 'ijk,l->ijkl',
+                    self.data['rates']['recomb']['recomb_three_body'],
+                    self.data['user']['dens_grid'],
+                )
+            self.data['processed']['acd'] -= np.einsum(
+                'nj...,jm...->nm...',
+                self.data['cr_matrix']['cr'][np.c_[meta_levels], exc_levels],
+                np.einsum(
+                    'ij...,jm...->im...',
+                    self.data['cr_matrix']['cr_red_inv'][:num_levels, :num_levels],  # TODO: do the :num_levels indexers actually do anything here?
+                    recomb_rates[exc_levels],
+                ),
+            )
 
-                if(self.data['processed']['driving_populations_norm']):
-                    self.data['processed']['scd'] = self.data['processed']['scd'] + \
-                                                  np.einsum('ipk,ikl->ipkl',
-                                                  self.data['rates']['ioniz']['ionization'][self.data['atomic']['metas'],:,:],
-                              1/(1+np.sum(self.data['processed']['pops_no_norm'][:,self.data['atomic']['metas'],:,:],axis=0)))
+        # Calculate charge exchange effective recombination (CCD) coefficients
+        if self.data['user']['use_cx']:
+            cx_rates = self.data['rates']['cx']['cx']
+            new_shape = cx_rates.shape + new_axis
+            cx_rates = cx_rates.reshape(new_shape)
+            self.data['processed']['ccd'] -= np.einsum(
+                'nj...,jm...->nm...',
+                self.data['cr_matrix']['cr'][np.c_[meta_levels], exc_levels],
+                np.einsum(
+                    'ij...,jm...->im...',
+                    self.data['cr_matrix']['cr_red_inv'][:num_levels, :num_levels],  # TODO: do the :num_levels indexers actually do anything here?
+                    cx_rates[exc_levels],
+                )
+            )
+            self.data['processed']['ccd'] += cx_rates[meta_levels]
 
-                else:
-                    self.data['processed']['scd'] = self.data['processed']['scd'] + \
-                                             self.data['rates']['ioniz']['ionization'][self.data['atomic']['metas'],:,:,None]
+        # Calculate cross-coupling (QCD) rate coefficients
+        # TODO: could this calculation be done without looping through every metastable?
+        for m in range(num_metas):
+            # TODO: test that this code works when there is only one metastable
+            metas_to_keep = np.setdiff1d(meta_levels, meta_levels[m])
+            metas_to_keep_ind = np.arange(num_metas)[np.isin(meta_levels, metas_to_keep)]
+            # Equation 3.35 in C. Johnson thesis
+            temp = np.einsum(
+                'm...,mn...->n...',
+                self.data['cr_matrix']['cr'][meta_levels[m], exc_levels],
+                self.data['processed']['F'][:, metas_to_keep_ind],
+            )
+            self.data['processed']['qcd'][metas_to_keep_ind, m] = np.einsum(
+                'nk,k->nk' if self.data['user']['temp_dens_pair'] else 'nkl,l->nkl',
+                self.data['cr_matrix']['cr'][meta_levels[m], metas_to_keep] + temp,  # TODO: should there be a minus sign in front of temp?
+                1 / self.data['user']['dens_grid'],
+            )
 
-            if(self.data['user']['use_recombination'] and self.data['user']['use_recombination_three_body']):
-                #this is the total recombination with three body and the rates that in included in the adf04 file
-                recomb_coeff = np.einsum('ijk,l->ijkl',
-                                         self.data['rates']['recomb']['recomb_three_body'],
-                                         self.data['user']['dens_grid']) + \
-                                         self.data['rates']['recomb']['recombination'][:,:,:,None]
-            elif(self.data['user']['use_recombination']):
-                recomb_coeff = self.data['rates']['recomb']['recombination'][:,:,:,None]
-            elif(self.data['user']['use_recombination_three_body']):            
-                recomb_coeff = np.einsum('ijk,l->ijkl',
-                                         self.data['rates']['recomb']['recomb_three_body'],
-                                         self.data['user']['dens_grid'])
-            if(self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']):
-                #effective recombination rate
-                self.data['processed']['acd'] = -np.einsum('njkl,jmkl->nmkl',
-
-                               self.data['cr_matrix']['cr'][np.c_[self.data['atomic']['metas']], levels_to_keep,:,:],
-                               np.einsum('ijkl,jmkl->imkl', self.data['cr_matrix']['cr_red_inv'][0:len(self.data['atomic']['energy']),
-                               0:len(self.data['atomic']['energy']),:,:],
-                               recomb_coeff[levels_to_keep,:,:,:]))
-
-                self.data['processed']['acd'] = self.data['processed']['acd'] + recomb_coeff[self.data['atomic']['metas'],:,:,:]
-
-            if(self.data['user']['use_cx']):
-                #effective recombination rate
-                
-                cx_coeff = self.data['rates']['cx']['cx'][:,:,:,None]
-
-                self.data['processed']['ccd'] = -np.einsum('njkl,jmkl->nmkl',
-
-                               self.data['cr_matrix']['cr'][np.c_[self.data['atomic']['metas']], levels_to_keep,:,:],
-                               np.einsum('ijkl,jmkl->imkl', self.data['cr_matrix']['cr_red_inv'][0:len(self.data['atomic']['energy']),
-                               0:len(self.data['atomic']['energy']),:,:],
-                               cx_coeff[levels_to_keep,:,:,:]))
-
-                self.data['processed']['ccd'] = self.data['processed']['ccd'] + cx_coeff[self.data['atomic']['metas'],:,:,:]
-
-            self.data['processed']['qcd'] = np.zeros((len(self.data['atomic']['metas']),
-                                                      len(self.data['atomic']['metas']),
-                                                      len(self.data['user']['temp_grid']),
-                                                      len(self.data['user']['dens_grid'])))
-            t = []
-            for n in range(0,len(self.data['atomic']['metas'])):
-                metas_to_keep = np.setdiff1d( self.data['atomic']['metas'],
-                                              self.data['atomic']['metas'][n])
-                #calculate the metastable cross coupling coefficent, this the number of atoms that start in one
-                #metastable and then end up in a different metastable
-                metas_to_keep_ind = np.arange(self.data['atomic']['metas'].shape[0])\
-                                         [np.in1d(self.data['atomic']['metas'], metas_to_keep)]
-                self.data['processed']['qcd'][metas_to_keep_ind,n,:,:] = np.einsum('nkl,l->nkl',
-
-                                        self.data['cr_matrix']['cr'][self.data['atomic']['metas'][n],metas_to_keep,:,:] +\
-                                        np.einsum('mkl,mnkl->nkl', self.data['cr_matrix']['cr'][self.data['atomic']['metas'][n],
-                                        levels_to_keep,:,:],
-                                        self.data['processed']['F'][:,metas_to_keep_ind,:,:]
-                                        ),1/self.data['user']['dens_grid'])
-
-            if(self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']):            
-                for m in range(0,len(self.data['atomic']['ion_pot'])):
-
-                    metasplus_to_keep = np.setdiff1d( np.linspace(0,len(self.data['atomic']['ion_pot'])-1,
-                                                                  len(self.data['atomic']['ion_pot']),dtype='int'),m)
-                    metasplus_to_keep_ind = np.arange(self.data['atomic']['ion_pot'].shape[0])\
-                                         [np.in1d(self.data['atomic']['ion_pot_lvl']-1, metasplus_to_keep)]
-                    #parent cross coupling coefficient, start in the parent atom, recombine get redistrubted then
-                    #ionize back into the parent but into a different parent metastable
-                    self.data['processed']['xcd'][metasplus_to_keep_ind,np.array([m]),:,:] =-np.einsum('ik,imkl->mkl',
-
-                            self.data['rates']['ioniz']['ionization'][levels_to_keep,m,:],np.einsum('ijkl,jmkl->imkl',
-                            self.data['cr_matrix']['cr_red_inv'][0:len(self.data['atomic']['energy']),
-                                                                 0:len(self.data['atomic']['energy']),:,:],
-                            recomb_coeff[len(self.data['atomic']['metas']):len(self.data['atomic']['energy']),metasplus_to_keep,:,:]))
+        # Calculate parent cross-coupling (XCD) coefficients
+        # TODO: could this calculation be done without looping through every parent metastable?
+        if self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']:
+            for m in range(num_parents):
+                parents_to_keep = np.setdiff1d(np.arange(num_parents), m)
+                parents_to_keep_ind = np.arange(num_parents)[np.isin(self.data['atomic']['ion_pot_lvl']-1, parents_to_keep)]
+                # Equation 3.39 in C. Johnson thesis
+                # TODO: thest that this code works when there is only one metastable
+                temp = np.einsum(
+                    'ij...,jm...->im...',
+                    self.data['cr_matrix']['cr_red_inv'][:num_levels, :num_levels],
+                    recomb_rates[num_metas:num_levels, parents_to_keep],
+                )
+                self.data['processed']['xcd'][parents_to_keep_ind, np.array([m])] =-np.einsum(
+                    'ik,imk...->mk...',
+                    self.data['rates']['ioniz']['ionization'][exc_levels, m],
+                    temp,
+                )
 
                     
     def solve_time_dependent(self):
@@ -2131,8 +1965,6 @@ class colradpy():
             print('Energy values that could be shifted to NIST energies have been. Original energies now stored in [atomic][adf04_energies')
 
             
-
-            
     def get_nist_levels(self):
         """ get_nist_levels grabs the nist energy levels from the NIST mysql database. The mysql NIST database must
             be installed. There is a plain text file in the works to get around this and simplify for users.
@@ -2188,11 +2020,6 @@ class colradpy():
         self.make_electron_excitation_rates()
         self.populate_cr_matrix()
         self.solve_quasi_static()
-
-
-
-
-
 
 
     def make_nat_broad(self,calc_lorentz = True, dw=0,n=50,gs=5,split_wave=np.array([])):
@@ -2350,12 +2177,6 @@ class colradpy():
         return np.einsum('ij,i->ij', gau_tmp,1/np.trapz(gau_tmp,x=wave_arr,axis=1))
 
 
-
-
-
-
-        
-
     def lorentz(self,vl,v,v0):
         '''Lorentzian function used for natural line broadening vl/((v-v0)**2 + vl**2)
 
@@ -2373,20 +2194,6 @@ class colradpy():
         return vl[:,None]/((v-v0[:,None])**2 + vl[:,None]**2)
 
 
-
-
-
-
-
-
-
-
-
-
-
-        
-
-        
     def plot_pec_sticks(self,temp=[0],dens=[0],meta=[0]):
         """plot_pec_sticks will plot the the PEC values versus wavelength.
            **WARNING** wavelngth values will be wrong unless energy levels in the file
@@ -2486,9 +2293,6 @@ class colradpy():
                 plt.legend(loc='best')
 
 
-
-
-
     def return_level_info(self,level_num,split=False):
         """Retrun all the level identifying information for a given level.
            The default return is the normal level (adf04 file).
@@ -2515,7 +2319,6 @@ class colradpy():
                    self.data['atomic']['L'][level_num],\
                    self.data['atomic']['w'][level_num],\
                    self.data['atomic']['energy'][level_num]
-           
         
 
     def plot_pec_ratio_dens(self,pec1,pec2,temp=np.array([0]),meta = np.array([0]),scale='log'):
@@ -2570,9 +2373,6 @@ class colradpy():
                 plt.legend(loc='best')
 
 
-
-
-
     def write_pecs_adf15(self,fil_name='', pec_inds = 0, num = 8, pecs_split=False):
 
         """ This function calls the write_adf15 function.
@@ -2622,7 +2422,6 @@ class colradpy():
                     self.data['user']['temp_grid'], self.data['atomic']['metas'],
                         self.data['atomic']['ion_pot'],
                         user = self.data['user'], atomic = self.data['atomic'], num = num)
-            
 
 
     def dump_hdf5(self,fil_name='colradpy_hdf5_dump.hkl', cut_limit=1e-3, pecs=True, gcrs=False, additional=False):
@@ -2683,14 +2482,7 @@ class colradpy():
         sav_dict['input_file'] =  self.data['input_file']
         sav_dict['processed']  =  processed
 
-
         sav_dict = myprint(sav_dict)
         hdfdict.dump(sav_dict, h5py.File(fil_name,'a'))
 
-
-
-
-        
         fil_tmp.close()
-
-

@@ -185,6 +185,7 @@ def solve_matrix_exponential_ss_new(matrix, source):
     source = np.moveaxis(source, 0, -1)
     eigenvalues, eigenvectors = np.linalg.eig(matrix)
 
+    # TODO: Figure out a more numerically robust way of performing the check below, otherwise remove it
     # Check that all eigenvalues are real and negative (to within machine precision)
     if np.iscomplexobj(eigenvalues):
         eigenvalues = np.real(eigenvalues)
