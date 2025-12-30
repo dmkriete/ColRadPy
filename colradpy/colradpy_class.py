@@ -651,14 +651,14 @@ class colradpy():
                                   len(self.data['atomic']['ion_pot']),
                                   len(self.data['user']['temp_grid'])))
         for p in range(0,len(self.data['atomic']['ion_pot'])):
-            l_map = np.array(['S','P','D','F','G','H','I','J','I','K'])
+            l_map = np.array(['S','P','D','F','G','H','I','J','I','K'])  # TODO: should the second 'I' be removed?
             if(len(self.data['atomic']['ion_term'][p]) ==2): # was -1)/2.
                 w_ion = ( int(self.data['atomic']['ion_term'][p][0]) * \
                           (np.where(l_map==self.data['atomic']['ion_term'][p][1].upper())[0][0]*2+1))
             elif(len(self.data['atomic']['ion_term'][p]) ==3):
-                w_ion = float(self.data['atomic']['ion_term'][p][2])
+                w_ion = float(self.data['atomic']['ion_term'][p][2])  # TODO: shouldn't w be 2*J + 1 instead of J for IC coupling?
             else:
-                w_ion=1e30 #was 1e30 changed 1/10/2020
+                w_ion=1e30  # TODO: could this be np.inf instead?
             self.data['rates']['recomb']['w_ion'] = w_ion#1.656742E-22
             #this is from detailed balance
             self.data['rates']['recomb']['recomb_three_body'][:,p,:] = 1.656742E-22* \
@@ -1098,35 +1098,48 @@ class colradpy():
         num_metas = len(self.data['atomic']['metas'])
         meta_levels = self.data['atomic']['metas']
         exc_levels = np.setdiff1d(np.arange(num_levels), meta_levels)
+        parent_levels = num_levels + np.arange(num_parents)
         new_axis = (() if self.data['user']['temp_dens_pair'] else (1,))
 
-        self.data['cr_matrix']['beta'] = -self.data['cr_matrix']['cr'][exc_levels, meta_levels]
-        cr_red = self.data['cr_matrix']['cr'][exc_levels, exc_levels]
+        # In the following line and frequently throughout this function, integer
+        # array indexing on the first two dimensions of the CR matrix is
+        # employed. To do this on both dimensions simultaneously, the two 1D
+        # indexing arrays need to be expanded to multidimensional arrays that
+        # broadcast against each other, which is accomplished with np.ix_().
+        # Alternatively, the indexing of each dimension can be done
+        # sequentially, but this creates an intermediate copy of the array.
+
+        # Extract square portion of CR matrix relating excited levels to each
+        # other (RHS of Eq. 3.22 in C. Johnson thesis)
+        cr_red = self.data['cr_matrix']['cr'][exc_levels][:, exc_levels]
 
         # TODO: move these "storage" type operations to end of function?
         self.data['processed'] = {}
         self.data['cr_matrix']['cr_red'] = cr_red
         self.data['processed']['excited_levels'] = exc_levels
 
+        # Extract portion of CR matrix relating excited and metastable levels
+        # (LHS of Eq. 3.22 in C. Johnson thesis, but with metastables factored
+        # out as a vector)
+        self.data['cr_matrix']['beta'] = -self.data['cr_matrix']['cr'][exc_levels][:, meta_levels]
         if self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']:
-            recomb_driving_lvls = num_levels + np.arange(num_parents)
+            # TODO: check whether the last columns of the CR matrix do not exist when there is no recombination, otherwise the if statement can be removed
             self.data['cr_matrix']['beta'] = np.append(
                 self.data['cr_matrix']['beta'],
-                -self.data['cr_matrix']['cr'][exc_levels, recomb_driving_lvls],
+                -self.data['cr_matrix']['cr'][exc_levels][:, parent_levels],
                 axis=1,
             )
-
         if self.data['user']['use_cx']:
             num_cxs = len(np.unique(self.data['rates']['cx']['cx_transitions'][:,1]))
             cx_driving_lvls = num_levels + num_parents + np.arange(num_cxs)
             self.data['cr_matrix']['beta'] = np.append(
                 self.data['cr_matrix']['beta'],
-                -self.data['cr_matrix']['cr'][exc_levels, cx_driving_lvls],
+                -self.data['cr_matrix']['cr'][exc_levels][:, cx_driving_lvls],
                 axis=1,
             )
 
-        # Calculate excited state populations (Eq. 3.23 in C. Johnson thesis)
-        # TODO: consider reordering CR matrix to put n_e/T_e axes first, as this would simplify many of the linear algebra operations
+        # Calculate matrix relating excited level populations to metastable
+        # populations (Eq. 3.23 in C. Johnson thesis)
         cr_red = np.moveaxis(cr_red, (0, 1), (-2, -1))  # Put CR matrix axes last to facilitate inversion
         cr_red_inv = np.linalg.inv(cr_red)
         self.data['cr_matrix']['cr_red_inv'] = np.moveaxis(cr_red_inv, (-2, -1), (0, 1))  # Put CR matrix axes back to beginning
@@ -1139,7 +1152,7 @@ class colradpy():
         # Normalize the excited state populations
         # Quasistatic approximation assumes that there is a small population in
         # 'excited' states, but this is sometimes not the case, so the
-        # populations must be renomalized. The default when there is one
+        # populations must be renormalized. The default when there is one
         # metastable present is to normalize, but there is a choice for the
         # user to decide. The default when there is more than one metastable is
         # to not normalize.
@@ -1180,7 +1193,7 @@ class colradpy():
                                8100*1.60218e-19*(self.data['cr_matrix']['A_ji'][exc_levels[j],i]*\
                                                         self.data['processed']['pops'][j]/ \
                                                         self.data['user']['dens_grid'])*1.e7)
-   
+
                     self.data['processed']['wave_vac'].append(1.e7/abs(self.data['atomic']['energy'][exc_levels[j]]\
                                                                         - self.data['atomic']['energy'][i]))
 
@@ -1197,7 +1210,6 @@ class colradpy():
         self.data['processed']['pec_levels'] = np.asarray(self.data['processed']['pec_levels'])
 
         # Calculate generalized collisional radiative (GCR) coefficients
-        
         # Initialize matrices to hold GCR coefficients
         temp_dens_shape = self.data['cr_matrix']['cr'].shape[2:]
         self.data['processed']['scd'] = np.zeros((num_metas, num_parents) + temp_dens_shape)
@@ -1226,6 +1238,7 @@ class colradpy():
         if self.data['user']['use_ionization']:
             ioniz_rates = self.data['rates']['ioniz']['ionization']
             ioniz_metas = ioniz_rates[meta_levels]
+            # Equation 16 in Summers et al. 2006
             # Add ionization contribution from excited levels
             self.data['processed']['scd'] += np.einsum(
                 'ipk,imk...->mpk...',
@@ -1255,14 +1268,12 @@ class colradpy():
                     self.data['rates']['recomb']['recomb_three_body'],
                     self.data['user']['dens_grid'],
                 )
-            self.data['processed']['acd'] -= np.einsum(
-                'nj...,jm...->nm...',
-                self.data['cr_matrix']['cr'][np.c_[meta_levels], exc_levels],
-                np.einsum(
-                    'ij...,jm...->im...',
-                    self.data['cr_matrix']['cr_red_inv'][:num_levels, :num_levels],  # TODO: do the :num_levels indexers actually do anything here?
-                    recomb_rates[exc_levels],
-                ),
+            # Equation 13 in Summers et al. 2006
+            self.data['processed']['acd'] = recomb_rates[meta_levels]- np.einsum(
+                'nj...,ji...,im...->nm...',
+                self.data['cr_matrix']['cr'][meta_levels][:, exc_levels],
+                self.data['cr_matrix']['cr_red_inv'],
+                recomb_rates[exc_levels],
             )
 
         # Calculate charge exchange effective recombination (CCD) coefficients
@@ -1275,48 +1286,49 @@ class colradpy():
                 self.data['cr_matrix']['cr'][np.c_[meta_levels], exc_levels],
                 np.einsum(
                     'ij...,jm...->im...',
-                    self.data['cr_matrix']['cr_red_inv'][:num_levels, :num_levels],  # TODO: do the :num_levels indexers actually do anything here?
+                    self.data['cr_matrix']['cr_red_inv'],
                     cx_rates[exc_levels],
                 )
             )
             self.data['processed']['ccd'] += cx_rates[meta_levels]
 
         # Calculate cross-coupling (QCD) rate coefficients
-        # TODO: could this calculation be done without looping through every metastable?
-        for m in range(num_metas):
-            # TODO: test that this code works when there is only one metastable
-            metas_to_keep = np.setdiff1d(meta_levels, meta_levels[m])
-            metas_to_keep_ind = np.arange(num_metas)[np.isin(meta_levels, metas_to_keep)]
-            # Equation 3.35 in C. Johnson thesis
-            temp = np.einsum(
-                'm...,mn...->n...',
-                self.data['cr_matrix']['cr'][meta_levels[m], exc_levels],
-                self.data['processed']['F'][:, metas_to_keep_ind],
-            )
-            self.data['processed']['qcd'][metas_to_keep_ind, m] = np.einsum(
-                'nk,k->nk' if self.data['user']['temp_dens_pair'] else 'nkl,l->nkl',
-                self.data['cr_matrix']['cr'][meta_levels[m], metas_to_keep] + temp,  # TODO: should there be a minus sign in front of temp?
-                1 / self.data['user']['dens_grid'],
-            )
+        # Equation 14 in Summers et al. 2006
+        direct_coupling = self.data['cr_matrix']['cr'][meta_levels][:, meta_levels]
+        indirect_coupling = -np.einsum(
+            'nj...,ji...,im...->nm...',
+            self.data['cr_matrix']['cr'][meta_levels][:, exc_levels],
+            self.data['cr_matrix']['cr_red_inv'],
+            self.data['cr_matrix']['cr'][exc_levels][:, meta_levels],
+        )
+        self.data['processed']['qcd'] = np.einsum(
+            'nmp,p->mnp' if self.data['user']['temp_dens_pair'] else 'nmtd,d->mntd',
+            direct_coupling + indirect_coupling,
+            1 / self.data['user']['dens_grid'],
+        )
+        # Previous calculation has non-zero diagonal entries, each one
+        # giving the rate at which a metastable transitions to excited states
+        # that then transition back to the metastable. Since these processes
+        # make no net contribution to the ionization balance, the diagonal
+        # entries of the QCD matrix are zeroed out.
+        self.data['processed']['qcd'][np.diag_indices(num_metas)] = 0
 
         # Calculate parent cross-coupling (XCD) coefficients
-        # TODO: could this calculation be done without looping through every parent metastable?
         if self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']:
-            for m in range(num_parents):
-                parents_to_keep = np.setdiff1d(np.arange(num_parents), m)
-                parents_to_keep_ind = np.arange(num_parents)[np.isin(self.data['atomic']['ion_pot_lvl']-1, parents_to_keep)]
-                # Equation 3.39 in C. Johnson thesis
-                # TODO: thest that this code works when there is only one metastable
-                temp = np.einsum(
-                    'ij...,jm...->im...',
-                    self.data['cr_matrix']['cr_red_inv'][:num_levels, :num_levels],
-                    recomb_rates[num_metas:num_levels, parents_to_keep],
-                )
-                self.data['processed']['xcd'][parents_to_keep_ind, np.array([m])] =-np.einsum(
-                    'ik,imk...->mk...',
-                    self.data['rates']['ioniz']['ionization'][exc_levels, m],
-                    temp,
-                )
+            # Equation 17 in Summers et al. 2006
+            self.data['processed']['xcd'] = -np.einsum(
+                'p,jmp,jip,inp->nmp' if self.data['user']['temp_dens_pair'] else 'd,jmt,jitd,intd->nmtd',
+                self.data['user']['dens_grid'],
+                self.data['rates']['ioniz']['ionization'][exc_levels],
+                self.data['cr_matrix']['cr_red_inv'],
+                recomb_rates[exc_levels],
+            )
+            # Previous calculation has non-zero diagonal entries, each one
+            # giving the rate at which a parent metastable recombines to child
+            # excited states that then ionize back to the parent metastable.
+            # Since these processes make no net contribution to the ionization
+            # balance, the diagonal entries of the XCD matrix are zeroed out.
+            self.data['processed']['xcd'][np.diag_indices(num_parents)] = 0
 
                     
     def solve_time_dependent(self):
@@ -2086,7 +2098,6 @@ class colradpy():
                                                                             lor_tmp,
                             1/np.trapz(lor_tmp,x=self.data['processed']['broadening']['nat']['wave_arr'],axis=1))
 
-
             
     def make_dopp_broad(self, T, m, calc_gauss=True, dw=0., n=50,gs=5,split_wave=np.array([])):
         """ Make the doppler shift for spectral lines ues equation 1.25 and 1.26 from Stuart Lochs thesis
@@ -2155,10 +2166,6 @@ class colradpy():
                                 1/np.trapz(gau_tmp,x=self.data['processed']['broadening']['dopp']['wave_arr'],axis=1))
 
             '''
-
-
-
-
 
 
     def gauss_dopp(self, wave_arr, wave, dnu_g):

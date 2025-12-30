@@ -154,7 +154,7 @@ def read_adf04(fil):
         adf04['atomic']['energy'] = np.asarray(energy)
         adf04['atomic']['zpla'] = np.asarray(zpla)
         adf04['atomic']['zpla1'] = np.asarray(zpla1)
-        adf04['atomic']['ion_pot_lvl'] = zz_check
+        adf04['atomic']['ion_pot_lvl'] = zz_check  # TODO: if there are any parents with no fractional ionization factor data, this array will have less entries than adf04['atomic']['ion_pot']. Should this be changed?
     except:
         print("\n**FAILED LEVEL " +str(level_num)+"**\n\n"+"\n\nOne or more configuration/energy lines in the adf04 file are formatted incorrectly.\nIt should be formatted as below (C+3 example). \nIf more than one ionization metastable,\nadd more apla,zpla after the first ie. {2}1.00\n      2 1S2 2P1           (2)1( 2.5)    64555.4   {1}1.000")
         sys.exit(1)
