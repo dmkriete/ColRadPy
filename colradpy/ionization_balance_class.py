@@ -10,6 +10,7 @@ from colradpy.read_adf11 import read_adf11
 
 
 def interp_rates_adf11(logged_temp, logged_dens, temp, dens, logged_gcr):
+    logged_gcr = np.nan_to_num(logged_gcr, neginf=-1e300)  # Avoid numeric issues with -inf
     interp = RegularGridInterpolator(
         points=(logged_temp, logged_dens),
         values=np.moveaxis(logged_gcr, (0, 1), (-2, -1)),
@@ -163,6 +164,7 @@ class ionization_balance():
                         self.data['input_file']['acd'] = adf11['input_file']
                         
                     if 'qcd' in file:
+                        # TODO: new version of interpolator should remove need to manually modify diagonal entries
                         # Interpolator cannot handle negative infinities along
                         # diagonal (caused by log of zero rate). Convert the
                         # diagonal to zero before and after interpolation as a
@@ -180,8 +182,9 @@ class ionization_balance():
                         # exponentiation inside interpolator, so set back to 0
                         self.data['cr_data']['gcrs'][str(j)]['qcd'][np.diag_indices(n)] = 0
                         self.data['input_file']['qcd'] = adf11['input_file']
-                        
+
                     if 'xcd' in file:
+                        # TODO: new version of interpolator should remove need to manually modify diagonal entries
                         # Interpolator cannot handle negative infinities along
                         # diagonal (caused by log of zero rate). Convert the
                         # diagonal to zero before and after interpolation as a
@@ -421,8 +424,8 @@ class ionization_balance():
             diag_lower = np.diag_indices(num_meta_lower)
             diag_upper = np.diag_indices(num_meta_upper)
 
-            # Consider pre-calculating m + diag_lower[0] since it gets used a lot?
-            # Consider pre-calculating m + num_meta_lower since it gets used a lot?
+            # TODO: Consider pre-calculating m + diag_lower[0] since it gets used a lot?
+            # TODO: Consider pre-calculating m + num_meta_lower since it gets used a lot?
 
             # Populate SCDs in ion balance
             self.data['ion_matrix'][m+diag_lower[0], m+diag_lower[1]] -= (
