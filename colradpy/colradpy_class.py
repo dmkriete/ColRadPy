@@ -486,14 +486,15 @@ class colradpy():
                     
         for i in range(0,len(self.data['rates']['ioniz']['ion_transitions'])):            
             for j in range(0,len(self.data['user']['temp_grid'])):
-                
-                self.data['rates']['ioniz']['ionization'][self.data['rates']['ioniz']\
-                    ['ion_transitions'][i,0] -1,self.data['rates']['ioniz']\
-                    ['ion_transitions'][i,1] -1, j] = ion_excit_interp_grid[i,j]/\
-                    np.exp((self.data['atomic']['ion_pot'][self.data['rates']['ioniz']\
-                    ['ion_transitions'][i,1]-1] - self.data['atomic']['energy']\
-                    [self.data['rates']['ioniz']['ion_transitions'][i,0] -1 ])\
-                    *0.00012398774011749576/self.data['user']['temp_grid'][j])
+                child_index = self.data['rates']['ioniz']['ion_transitions'][i, 0] - 1
+                parent_index = self.data['rates']['ioniz']['ion_transitions'][i, 1] - 1
+                self.data['rates']['ioniz']['ionization'][child_index, parent_index, j] = (
+                    ion_excit_interp_grid[i, j]
+                    / np.exp(
+                        (self.data['atomic']['ion_pot'][parent_index] - self.data['atomic']['energy'][child_index])
+                        * 0.00012398774011749576 / self.data['user']['temp_grid'][j]
+                    )
+                )
                 
                 
     def suppliment_with_ecip(self):
@@ -1347,6 +1348,7 @@ class colradpy():
            Mathemat), Society for Industrial and Applied Mathematics,
            Philadelphia, PA, USA, 2007.
         """
+        # TODO: this can return complex-valued results; implement a check and cast to real
 
         if('processed' not in self.data.keys()):
             self.data['processed'] = {}
