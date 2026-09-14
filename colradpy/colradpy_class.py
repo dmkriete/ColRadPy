@@ -198,7 +198,7 @@ class colradpy():
         fil,
         metas=np.array([]),
         temp_grid=np.array([]),
-        electron_den=np.array([]),
+        dens_grid=np.array([]),
         htemp_grid = np.array([]),
         hdens_grid = np.array([]),
         use_ionization=True,
@@ -226,10 +226,10 @@ class colradpy():
         self.data = {}
         self.processed = {} 
         self.data['user'] = {}
-        self.data['user']['temp_grid'] = np.asarray(temp_grid) #eV
-        self.data['user']['dens_grid'] = np.asarray(electron_den)#cm-3
-        self.data['user']['htemp_grid'] = np.asarray(htemp_grid) #eV
-        self.data['user']['hdens_grid'] = np.asarray(hdens_grid) #cm-3
+        self.data['user']['temp_grid'] = np.asarray(temp_grid)  # eV
+        self.data['user']['dens_grid'] = np.asarray(dens_grid)  # cm-3
+        self.data['user']['htemp_grid'] = np.asarray(htemp_grid)  # eV
+        self.data['user']['hdens_grid'] = np.asarray(hdens_grid)  # cm-3
         if((len(self.data['user']['dens_grid']) != len(self.data['user']['hdens_grid'])) & use_cx):
             print('Electron density and neutral density grids must be the same length')
             sys.exit()
@@ -2411,12 +2411,21 @@ class colradpy():
                 pec_inds = np.linspace(0,len(self.data['processed']['split']['wave_air'])-1,
                                      len(self.data['processed']['split']['wave_air']),dtype='int')
             
-            write_adf15(fil_name, pec_inds, self.data['processed']['split']['wave_air']*10,
-                    self.data['processed']['split']['pecs'], self.data['atomic']['element'],
-                    self.data['atomic']['charge_state'], self.data['user']['dens_grid'],
-                    self.data['user']['temp_grid'], self.data['atomic']['metas'],
-                        self.data['atomic']['ion_pot'],
-                        user = self.data['user'], atomic = self.data['atomic'], num = num)
+            write_adf15(
+                fil_name,
+                pec_inds,
+                self.data['processed']['split']['wave_air']*10,
+                self.data['processed']['split']['pecs'],
+                self.data['atomic']['element'],
+                self.data['atomic']['charge_state'],
+                self.data['user']['dens_grid'],
+                self.data['user']['temp_grid'],
+                self.data['atomic']['metas'],
+                self.data['atomic']['ion_pot'],
+                user=self.data['user'],
+                atomic=self.data['atomic'],
+                num=num,
+            )
             
         else:#write un-split PECs
 
