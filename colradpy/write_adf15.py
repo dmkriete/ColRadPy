@@ -90,7 +90,7 @@ def write_adf15(fil_name,pec_inds, wave, pecs, element_sym,
 
             #header information for the PEC, important things here are the wavelength
             # number of temps and dens and metastable level
-            pec_header = '   ' + "{0:.1f}".format(wave[i]*10) + ' A  ' + str(len(dens)) +\
+            pec_header = '   ' + "{0:.1f}".format(wave[i]) + ' A  ' + str(len(dens)) +\
             '  ' + str(len(temp)) + ' /FILMEM = bottom  /TYPE = ' +typ +  ' /INDM = ' +\
             str(j) + ' ISEL = ' + str(i+1)+'\n'
 
