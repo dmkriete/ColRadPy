@@ -164,9 +164,6 @@ class colradpy():
       :param td_source: source term for populations in the TD CR equations
       :type metas: float array
 
-      :param default_pop_norm: Normalize to population within the charge state 
-      :type default_pop_norm: bool
-
       :param temp_dens_pair: use temperature density pair array instead of temperature density grids
       :type temp_dens_pair: bool
 
@@ -208,7 +205,6 @@ class colradpy():
         td_t = np.array([]),
         td_n0=np.array([]),
         td_source=np.array([]),
-        default_pop_norm=True,
         temp_dens_pair=False,
         rate_interp_ion='slinear',
         rate_interp_recomb='log_slinear',
@@ -246,7 +242,6 @@ class colradpy():
         self.data['user']['td_t'] = np.asarray(td_t)# seconds
         self.data['user']['td_n0'] = np.asarray(td_n0)
         self.data['user']['td_source'] = np.asarray(td_source)
-        self.data['user']['default_pop_norm'] = default_pop_norm
         self.data['user']['temp_dens_pair'] = temp_dens_pair
 
         #choosing the collisional interp and extrap type
@@ -653,13 +648,13 @@ class colradpy():
                                   len(self.data['user']['temp_grid'])))
         for p in range(0,len(self.data['atomic']['ion_pot'])):
             l_map = np.array(['S','P','D','F','G','H','I','J','I','K'])  # TODO: should the second 'I' be removed?
-            if(len(self.data['atomic']['ion_term'][p]) ==2): # was -1)/2.
+            if len(self.data['atomic']['ion_term'][p]) == 2: # was -1)/2.
                 w_ion = ( int(self.data['atomic']['ion_term'][p][0]) * \
                           (np.where(l_map==self.data['atomic']['ion_term'][p][1].upper())[0][0]*2+1))
-            elif(len(self.data['atomic']['ion_term'][p]) ==3):
+            elif len(self.data['atomic']['ion_term'][p]) == 3:
                 w_ion = float(self.data['atomic']['ion_term'][p][2])  # TODO: shouldn't w be 2*J + 1 instead of J for IC coupling?
             else:
-                w_ion=1e30  # TODO: could this be np.inf instead?
+                w_ion = 1e30  # TODO: could this be np.inf instead?
             self.data['rates']['recomb']['w_ion'] = w_ion#1.656742E-22
             #this is from detailed balance
             self.data['rates']['recomb']['recomb_three_body'][:,p,:] = 1.656742E-22* \
@@ -1150,25 +1145,6 @@ class colradpy():
             self.data['cr_matrix']['beta'],
         )
 
-        # Normalize the excited state populations
-        # Quasistatic approximation assumes that there is a small population in
-        # 'excited' states, but this is sometimes not the case, so the
-        # populations must be renormalized. The default when there is one
-        # metastable present is to normalize, but there is a choice for the
-        # user to decide. The default when there is more than one metastable is
-        # to not normalize.
-        if num_metas > 1:
-            self.data['processed']['driving_populations_norm'] = False
-        else:
-            self.data['processed']['driving_populations_norm'] = True
-        # TODO: I'm confused why the below code inverts the above setting; shouldn't it just set it to False?
-        if not self.data['user']['default_pop_norm']:
-            self.data['processed']['driving_populations_norm'] = (
-                not self.data['processed']['driving_populations_norm']
-            )
-        if self.data['processed']['driving_populations_norm']:
-            self.data['processed']['pops'] /= (1 + np.sum(self.data['processed']['pops'], axis=0))
-
         #setup pec and wavelength stuff start them as lists because
         #we wont know which levels actually have pec values before we loop through them
         #this lists are eventually converted into np arrays
@@ -1182,11 +1158,13 @@ class colradpy():
                 #if statement here because there will be a number of transitions that have zero
                 #for the PEC value and don't want to have to keep track of these.
 
-                if(exc_levels[j] > i ):#and self.data['cr_matrix']['A_ji'][j,i] > 1E-31):
+                if exc_levels[j] > i:
 
-                    self.data['processed']['pecs'].append( self.data['cr_matrix']['A_ji'][exc_levels[j],i]*\
-                                                        self.data['processed']['pops'][j]/ \
-                                                        self.data['user']['dens_grid'])
+                    self.data['processed']['pecs'].append(
+                        self.data['cr_matrix']['A_ji'][exc_levels[j], i]
+                        * self.data['processed']['pops'][j]
+                        / self.data['user']['dens_grid']
+                    )
                     #convert cm-1 to eV with /8100
                     #convert eV to joules *1.6021e-19
                     #convert to from W to erg/s to stay in cgs 1e7
@@ -1198,7 +1176,7 @@ class colradpy():
                     self.data['processed']['wave_vac'].append(1.e7/abs(self.data['atomic']['energy'][exc_levels[j]]\
                                                                         - self.data['atomic']['energy'][i]))
 
-                    self.data['processed']['pec_levels'].append( np.array([exc_levels[j],i]))
+                    self.data['processed']['pec_levels'].append(np.array([exc_levels[j], i]))
 
         self.data['processed']['pls'] = np.asarray(plt)
         self.data['processed']['plt'] = np.sum(np.asarray(plt)[:,:num_metas], axis=0)
@@ -1226,8 +1204,6 @@ class colradpy():
             self.data['cr_matrix']['beta'],
         )
         self.data['processed']['pops_no_norm'] = np.sum(self.data['processed']['pop_lvl'], axis=1)
-        if self.data['processed']['driving_populations_norm']:
-            self.data['processed']['pop_lvl'] /= (1 + np.sum(self.data['processed']['pop_lvl'], axis=(0, 1)))
 
         # Calculate the F matrix (note: not same definition as ADAS; ADAS divides by n_e)
         self.data['processed']['F'] = np.sum(
@@ -1247,15 +1223,8 @@ class colradpy():
                 self.data['processed']['F'],
             )
             # Add ionization contribution from metastable levels
-            if self.data['processed']['driving_populations_norm']:
-                self.data['processed']['scd'] += np.einsum(
-                    'ipk,ik...->ipk...',
-                    ioniz_metas,
-                    1 / (1 + np.sum(self.data['processed']['pops_no_norm'][:, meta_levels], axis=0))
-                )
-            else:
-                new_shape = ioniz_metas.shape + new_axis
-                self.data['processed']['scd'] += ioniz_metas.reshape((new_shape))
+            new_shape = ioniz_metas.shape + new_axis
+            self.data['processed']['scd'] += ioniz_metas.reshape((new_shape))
 
         # Calculate effective recombination (ACD) coefficients
         if self.data['user']['use_recombination'] or self.data['user']['use_recombination_three_body']:
@@ -2400,7 +2369,7 @@ class colradpy():
 
         """
 
-        
+
         if(fil_name==''):#defaul file name if the user did not choose one
             fil_name = 'adf15_colradpy_' + re.split('/',self.data['user']['file_loc'])[-1]
 
@@ -2410,7 +2379,7 @@ class colradpy():
                 #if no PEC indices specified by user just retun all
                 pec_inds = np.linspace(0,len(self.data['processed']['split']['wave_air'])-1,
                                      len(self.data['processed']['split']['wave_air']),dtype='int')
-            
+
             write_adf15(
                 fil_name,
                 pec_inds,
@@ -2426,20 +2395,29 @@ class colradpy():
                 atomic=self.data['atomic'],
                 num=num,
             )
-            
+
         else:#write un-split PECs
 
             if(pec_inds == 0):
-            
+
                 pec_inds = np.linspace(0,len(self.data['processed']['wave_air'])-1,
                                      len(self.data['processed']['wave_air']),dtype='int')
-            
-            write_adf15(fil_name, pec_inds, self.data['processed']['wave_air']*10,
-                    self.data['processed']['pecs'], self.data['atomic']['element'],
-                    self.data['atomic']['charge_state'], self.data['user']['dens_grid'],
-                    self.data['user']['temp_grid'], self.data['atomic']['metas'],
-                        self.data['atomic']['ion_pot'],
-                        user = self.data['user'], atomic = self.data['atomic'], num = num)
+
+            write_adf15(
+                fil_name,
+                pec_inds,
+                self.data['processed']['wave_air']*10,
+                self.data['processed']['pecs'],
+                self.data['atomic']['element'],
+                self.data['atomic']['charge_state'],
+                self.data['user']['dens_grid'],
+                self.data['user']['temp_grid'],
+                self.data['atomic']['metas'],
+                self.data['atomic']['ion_pot'],
+                user=self.data['user'],
+                atomic=self.data['atomic'],
+                num=num,
+            )
 
 
     def dump_hdf5(self,fil_name='colradpy_hdf5_dump.hkl', cut_limit=1e-3, pecs=True, gcrs=False, additional=False):
@@ -2474,7 +2452,6 @@ class colradpy():
 
         if(pecs):# dumps the PECs to the hdf file
             processed['pops']                     = self.data['processed']['pops']
-            processed['driving_populations_norm'] = self.data['processed']['driving_populations_norm']
             processed['pecs']                     = self.data['processed']['pecs'][inds_above,:,:,:]
             processed['pec_levels']               = self.data['processed']['pec_levels'][inds_above,:]
             processed['wave_air']                 = self.data['processed']['wave_air'][inds_above]
